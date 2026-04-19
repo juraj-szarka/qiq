@@ -6,20 +6,24 @@
 }
 
 body {
-    background-color: #000;
+    background-color: #111; /* Slightly lighter dark background for laptop viewing */
     color: #fff;
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    align-items: center; /* Centers the app horizontally on large screens */
     height: 100dvh; /* Entire screen height */
 }
 
 /* Container separating main content from navigation */
 .app-container {
     flex: 1; /* Takes up all space minus the bottom-nav */
+    width: 100%;
+    max-width: 480px; /* Constrains the app to a phone's width on laptops */
     position: relative;
     overflow: hidden;
     background: #000;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5); /* Adds a nice shadow edge for desktop */
 }
 
 /* GLOBAL HIDDEN CLASS FIX */
@@ -40,7 +44,7 @@ body {
 
 .post {
     height: 100%;
-    width: 100vw;
+    width: 100%; /* Changed from 100vw to fit within the max-width container */
     scroll-snap-align: start;
     scroll-snap-stop: always;
     display: flex;
@@ -53,7 +57,7 @@ body {
 
 .post video, .post img {
     height: 100%; 
-    width: 100vw;
+    width: 100%; /* Changed from 100vw to fit within the max-width container */
     scroll-snap-align: start;
     scroll-snap-stop: always; 
     display: flex;
@@ -62,6 +66,7 @@ body {
     position: relative;
     border-bottom: 1px solid #333;
     background: #000;
+    object-fit: contain;
 }
 
 /* Instagram Reels Layout */
@@ -149,6 +154,7 @@ body {
 /* Navigation - Now standard flexbox layout, not absolutely positioned */
 .bottom-nav {
     width: 100%;
+    max-width: 480px; /* Ensures the nav bar doesn't stretch across the laptop screen */
     height: 70px;
     background: rgba(0, 0, 0, 0.95);
     display: flex;
@@ -207,7 +213,7 @@ body {
 }
 
 .full-modal .full-screen-content {
-    width: 100vw;
+    width: 100%; /* Changed from 100vw */
     height: 100%; 
     border-radius: 0;
     padding-top: 20px; 

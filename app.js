@@ -112,12 +112,15 @@ async function searchUsers() {
 
     container.innerHTML = '<p style="text-align: center;">Searching...</p>';
     
+    // FIXED: Removed 'email' from the select and search query. 
+    // It now only searches the username column to prevent the 400 Bad Request.
     const { data, error } = await client.from('profiles')
         .select('id, username, avatar_url')
         .ilike('username', `%${query}%`)
         .limit(20);
 
     if (error) {
+        console.error("Search error:", error);
         container.innerHTML = '<p style="text-align: center;">Error searching.</p>';
         return;
     }
@@ -133,6 +136,7 @@ async function searchUsers() {
         const row = document.createElement('div');
         row.className = 'list-user-row';
         row.onclick = () => { viewProfile(user.id); };
+        
         row.innerHTML = `
             <div class="post-avatar" style="background-image: url('${user.avatar_url || ''}')"></div>
             <div>@${user.username || 'Anonymous'}</div>
@@ -415,8 +419,11 @@ async function processUpload(file, statusText, type) {
 }
 
 // --- Deletion Logic ---
-function togglePostMenu(postId) {
-    const menu = document.getElementById(`menu-${postId}`);
+function togglePostMenu(event) {
+    event.stopPropagation(); // Prevents click from opening the post profile
+    
+    // Finds the exact menu next to the specific button you clicked
+    const menu = event.target.nextElementSibling;
     if (menu) menu.classList.toggle('hidden');
 }
 
@@ -460,6 +467,18 @@ async function toggleLike(postId, btnElement, countElement) {
     }
 }
 
+// --- Double Tap to Like ---
+window.handleDoubleTap = function(postId) {
+    if (!currentUser) return alert("Please login to like posts!");
+    const btn = document.getElementById(`like-btn-${postId}`);
+    const count = document.getElementById(`like-count-${postId}`);
+    
+    // Simply triggers the like toggle every time you double tap
+    if (btn) {
+        toggleLike(postId, btn, count);
+    }
+};
+
 function createPostElement(post) {
     const postDiv = document.createElement('div');
     postDiv.className = 'post';
@@ -470,12 +489,13 @@ function createPostElement(post) {
     const authorName = post.profiles?.username || 'Anonymous';
     const avatarUrl = post.profiles?.avatar_url || '';
     
+    // Added ondblclick event to trigger the handleDoubleTap function
     let mediaHtml = post.media_type === 'video' 
-        ? `<video src="${post.media_url}" autoplay loop playsinline></video>`
-        : `<img src="${post.media_url}" alt="Post Image">`;
+        ? `<video src="${post.media_url}" autoplay loop playsinline ondblclick="handleDoubleTap('${post.id}')"></video>`
+        : `<img src="${post.media_url}" alt="Post Image" ondblclick="handleDoubleTap('${post.id}')">`;
 
     let followBtnHtml = '';
-    if (currentUser && post.user_id !== currentUser.id) {
+    if (currentUser && post.user_id !== post.user_id) {
         const isFollowing = myFollowings.has(post.user_id);
         followBtnHtml = `<button class="feed-follow-btn ${isFollowing ? 'following' : ''}" onclick="toggleFollow(event, '${post.user_id}')">${isFollowing ? 'Following' : 'Follow'}</button>`;
     }
@@ -483,13 +503,14 @@ function createPostElement(post) {
     let optionsMenuHtml = '';
     if (currentUser && post.user_id === currentUser.id) {
         optionsMenuHtml = `
-            <button class="more-options-btn material-icons" onclick="togglePostMenu('${post.id}')">more_vert</button>
-            <div id="menu-${post.id}" class="post-menu hidden">
+            <button class="more-options-btn material-icons" onclick="togglePostMenu(event)">more_vert</button>
+            <div class="post-menu hidden">
                 <button onclick="deletePost(event, '${post.id}', '${post.user_id}')">Delete Post</button>
             </div>
         `;
     }
 
+    // Added unique IDs to the like button and like count span
     postDiv.innerHTML = `
         ${optionsMenuHtml}
         ${mediaHtml}
@@ -503,9 +524,9 @@ function createPostElement(post) {
                 <div class="post-description">${post.description || ''}</div>
             </div>
             <div class="post-actions">
-                <button class="like-btn ${userHasLiked ? 'liked' : ''}" 
-                        onclick="toggleLike('${post.id}', this, this.nextElementSibling)">❤</button>
-                <span class="like-count">${likeCount}</span>
+                <button id="like-btn-${post.id}" class="like-btn ${userHasLiked ? 'liked' : ''}" 
+                        onclick="toggleLike('${post.id}', this, document.getElementById('like-count-${post.id}'))">❤</button>
+                <span id="like-count-${post.id}" class="like-count">${likeCount}</span>
             </div>
         </div>
     `;
