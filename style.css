@@ -394,24 +394,25 @@ button {
 
 
 /* --- Double Tap Heart Animation --- */
+/* Update the .tap-heart class in style.css */
 .tap-heart {
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%) scale(0);
-    color: #ff0050; /* Matches your like button color */
-    font-size: 120px;
+    color: #ff0050; 
+    font-size: 180px; /* Increased from 120px to 180px */
     opacity: 0;
     z-index: 100;
-    pointer-events: none; /* Ensures it doesn't block other clicks while animating */
-    text-shadow: 0 0 30px rgba(0,0,0,0.6);
+    pointer-events: none;
+    text-shadow: 0 0 50px rgba(0,0,0,0.8); /* Stronger shadow for the larger icon */
     animation: popHeart 0.8s ease-out forwards;
 }
 
 @keyframes popHeart {
     0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
-    15% { transform: translate(-50%, -50%) scale(1.2); opacity: 0.9; }
-    30% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-    70% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-    100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+    15% { transform: translate(-50%, -50%) scale(5); opacity: 0.9; } /* Slightly larger pop */
+    30% { transform: translate(-50%, -50%) scale(4); opacity: 1; }
+    70% { transform: translate(-50%, -50%) scale(4); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(7); opacity: 0; } /* Larger exit scale */
 }

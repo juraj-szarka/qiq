@@ -231,12 +231,29 @@ function toggleAuthView(view) {
     }
 }
 
+// Update the signUp function in app.js
 async function signUp() {
-    const email = document.getElementById('registerEmail').value;
+    const username = document.getElementById('registerUsername').value.trim();
+    const email = document.getElementById('registerEmail').value.trim();
     const password = document.getElementById('registerPassword').value;
-    const { error } = await client.auth.signUp({ email, password });
-    if (error) alert(error.message);
-    else alert("Check your email for confirmation!"); 
+
+    if (!username) return alert("Username is required!");
+
+    const { data, error } = await client.auth.signUp({ email, password });
+    
+    if (error) {
+        alert(error.message);
+    } else if (data.user) {
+        // Create the profile entry with the chosen username immediately
+        const { error: profileError } = await client.from('profiles').upsert({
+            id: data.user.id,
+            username: username
+        });
+
+        if (profileError) console.error("Profile creation error:", profileError);
+        
+        alert("Check your email for confirmation!"); 
+    }
 }
 
 async function signIn() {
