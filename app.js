@@ -5,43 +5,108 @@ const client = window.supabase.createClient(supabaseUrl, supabaseKey);
 
 let currentUser = null;
 let userProfile = null;
+let myFollowings = new Set(); 
+let currentViewProfileId = null;
 
 // --- App Initialization ---
 async function initializeApp() {
-    // 1. Grab the session explicitly on load
     const { data: { session } } = await client.auth.getSession();
     await updateAuthState(session);
     
-    // 2. Load the feed ONCE after the session is cleanly established
     loadFeed();
 
-    // 3. Listen for FUTURE auth changes (Login/Logout)
     client.auth.onAuthStateChange(async (event, session) => {
-        // Ignore the initial session event to prevent duplicate locked requests
         if (event === 'INITIAL_SESSION') return; 
-        
         await updateAuthState(session);
-        loadFeed(); // Refresh the feed so likes/UI update for the new user
+        loadFeed(); 
     });
 }
 
-// Helper to handle user state
 async function updateAuthState(session) {
     currentUser = session?.user || null;
     document.getElementById('profileBtn').innerText = currentUser ? "Profile" : "Login";
     
     if (currentUser) {
+        await fetchMyFollowings();
         await loadUserProfile();
     } else {
         userProfile = null;
+        myFollowings.clear();
     }
 }
 
-// Boot up the app
 initializeApp();
 
-// --- Modal Controls ---
-// ... (keep the rest of your app.js the exact same below this line)
+// --- NEW: Follow System Logic ---
+async function fetchMyFollowings() {
+    if (!currentUser) return;
+    const { data } = await client.from('follows').select('following_id').eq('follower_id', currentUser.id);
+    if (data) {
+        myFollowings = new Set(data.map(f => f.following_id));
+    }
+}
+
+async function toggleFollow(event, targetUserId, isProfileView = false) {
+    event.stopPropagation(); // Prevents opening the profile if clicked in the feed
+    if (!currentUser) return alert("Please login to follow!");
+
+    const isFollowing = myFollowings.has(targetUserId);
+
+    if (isFollowing) {
+        await client.from('follows').delete().match({ follower_id: currentUser.id, following_id: targetUserId });
+        myFollowings.delete(targetUserId);
+    } else {
+        await client.from('follows').insert([{ follower_id: currentUser.id, following_id: targetUserId }]);
+        myFollowings.add(targetUserId);
+    }
+
+    if (isProfileView) {
+        updateProfileFollowButton(targetUserId);
+        viewProfile(targetUserId); 
+    } else {
+        loadFeed(); 
+    }
+}
+
+async function getFollowStats(userId) {
+    const { count: followers } = await client.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', userId);
+    const { count: following } = await client.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId);
+    return { followers: followers || 0, following: following || 0 };
+}
+
+async function showFollowList(type, userId) {
+    showModal('listModal');
+    const title = type === 'followers' ? 'Followers' : 'Following';
+    document.getElementById('listTitle').innerText = title;
+    const container = document.getElementById('listContainer');
+    container.innerHTML = "Loading...";
+
+    let query;
+    if (type === 'followers') {
+        query = client.from('follows').select('profiles!follows_follower_id_fkey(id, username, avatar_url)').eq('following_id', userId);
+    } else {
+        query = client.from('follows').select('profiles!follows_following_id_fkey(id, username, avatar_url)').eq('follower_id', userId);
+    }
+
+    const { data, error } = await query;
+
+    if (error || !data.length) {
+        return container.innerHTML = "<p>No users found.</p>";
+    }
+
+    container.innerHTML = "";
+    data.forEach(item => {
+        const user = item.profiles;
+        const row = document.createElement('div');
+        row.className = 'list-user-row';
+        row.onclick = () => { hideModal('listModal'); viewProfile(user.id); };
+        row.innerHTML = `
+            <div class="post-avatar" style="background-image: url('${user.avatar_url || ''}')"></div>
+            <div>@${user.username || 'Anonymous'}</div>
+        `;
+        container.appendChild(row);
+    });
+}
 
 // --- Modal Controls ---
 function showModal(id) { document.getElementById(id).classList.remove('hidden'); }
@@ -85,7 +150,6 @@ async function signOut() {
 
 // --- Profile Management ---
 async function loadUserProfile() {
-    // CHANGE .single() to .maybeSingle()
     const { data, error } = await client.from('profiles').select('*').eq('id', currentUser.id).maybeSingle();
     
     if (data) {
@@ -96,7 +160,25 @@ async function loadUserProfile() {
             document.getElementById('avatarPreview').style.backgroundImage = `url(${data.avatar_url})`;
         }
     }
+
+    const stats = await getFollowStats(currentUser.id);
+    document.getElementById('myFollowersCount').innerText = stats.followers;
+    document.getElementById('myFollowingCount').innerText = stats.following;
+
+    const grid = document.getElementById('myProfilePosts');
+    grid.innerHTML = ""; 
+    const { data: posts } = await client.from('posts').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
+    
+    if (posts) {
+        posts.forEach(post => {
+            const el = document.createElement(post.media_type === 'video' ? 'video' : 'img');
+            el.src = post.media_url;
+            if (post.media_type === 'video') el.muted = true;
+            grid.appendChild(el);
+        });
+    }
 }
+
 async function saveProfile() {
     const statusText = document.getElementById('profileStatus');
     statusText.innerText = "Saving...";
@@ -124,21 +206,23 @@ async function saveProfile() {
         statusText.innerText = "Saved successfully!";
         await loadUserProfile();
         setTimeout(() => hideModal('profileModal'), 1000);
-        loadFeed(); // Refresh feed to show new profile details
+        loadFeed(); 
     }
 }
 
 // --- View Other Users Profile ---
 async function viewProfile(userId) {
+    if (currentUser && userId === currentUser.id) return handleProfileClick(); 
+
+    currentViewProfileId = userId;
     showModal('viewProfileModal');
+    
     document.getElementById('viewUsername').innerText = "Loading...";
     document.getElementById('viewBio').innerText = "";
     document.getElementById('viewAvatar').style.backgroundImage = "none";
-    
     const grid = document.getElementById('viewProfilePosts');
-    grid.innerHTML = ""; // Clear old posts
+    grid.innerHTML = ""; 
 
-    // Fetch Profile Info
     const { data: profile } = await client.from('profiles').select('*').eq('id', userId).single();
     if (profile) {
         document.getElementById('viewUsername').innerText = "@" + (profile.username || "Anonymous");
@@ -148,19 +232,39 @@ async function viewProfile(userId) {
         }
     }
 
-    // Fetch User's Posts
+    const stats = await getFollowStats(userId);
+    document.getElementById('viewFollowersCount').innerText = stats.followers;
+    document.getElementById('viewFollowingCount').innerText = stats.following;
+
+    updateProfileFollowButton(userId);
+
     const { data: posts } = await client.from('posts').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-    
     if (posts) {
         posts.forEach(post => {
             const el = document.createElement(post.media_type === 'video' ? 'video' : 'img');
             el.src = post.media_url;
-            if (post.media_type === 'video') el.muted = true; // Mute grid videos
+            if (post.media_type === 'video') el.muted = true; 
             grid.appendChild(el);
         });
     }
 }
 
+function updateProfileFollowButton(userId) {
+    const btn = document.getElementById('profileFollowBtn');
+    if (!currentUser) {
+        btn.style.display = 'none';
+        return;
+    }
+    btn.style.display = 'inline-block';
+    
+    if (myFollowings.has(userId)) {
+        btn.innerText = "Following";
+        btn.classList.add('following');
+    } else {
+        btn.innerText = "Follow";
+        btn.classList.remove('following');
+    }
+}
 
 // --- Fast Media Upload (No Length Limit) ---
 async function uploadMedia() {
@@ -169,9 +273,8 @@ async function uploadMedia() {
     if (!file) return alert("Select a file");
 
     const statusText = document.getElementById('uploadStatus');
-    statusText.innerText = "Processing upload..."; // Immediate UI feedback to prevent "lag" feel
+    statusText.innerText = "Processing upload..."; 
 
-    // Instantly process based on MIME type, no local loading
     const type = file.type.startsWith('video/') ? 'video' : 'image';
     await processUpload(file, statusText, type);
 }
@@ -180,15 +283,12 @@ async function processUpload(file, statusText, type) {
     const fileName = `${Date.now()}_${file.name}`;
     const description = document.getElementById('postDescription').value;
 
-    console.log("Starting upload to storage..."); // Debug log
     const { data: storageData, error: storageError } = await client.storage.from('media').upload(fileName, file);
     
     if (storageError) {
-        console.error("Storage Error:", storageError); // This will show the real reason
         return statusText.innerText = "Upload Error: " + storageError.message;
     }
 
-    console.log("Storage upload successful, inserting into DB...");
     const { data: publicUrlData } = client.storage.from('media').getPublicUrl(fileName);
 
     const { error: dbError } = await client.from('posts').insert([
@@ -196,12 +296,11 @@ async function processUpload(file, statusText, type) {
     ]);
 
     if (dbError) {
-        console.error("DB Error:", dbError);
         statusText.innerText = "DB Error: " + dbError.message;
     } else {
         statusText.innerText = "Uploaded successfully!";
         document.getElementById('postDescription').value = ""; 
-        document.getElementById('mediaInput').value = ""; // Clear file input
+        document.getElementById('mediaInput').value = ""; 
         setTimeout(() => {
             hideModal('uploadModal');
             statusText.innerText = "";
@@ -231,14 +330,9 @@ async function loadFeed() {
     const feedContainer = document.getElementById('feed');
     feedContainer.innerHTML = ''; 
 
-    // Fetch posts and join profiles for usernames AND avatars
     const { data: posts, error } = await client
         .from('posts')
-        .select(`
-            *,
-            profiles(username, avatar_url),
-            likes(user_id)
-        `)
+        .select(`*, profiles(username, avatar_url), likes(user_id)`)
         .order('created_at', { ascending: false })
         .limit(20);
 
@@ -252,13 +346,17 @@ async function loadFeed() {
         const likeCount = post.likes.length;
         const authorName = post.profiles?.username || 'Anonymous';
         const avatarUrl = post.profiles?.avatar_url || '';
-        const descText = post.description || '';
-
+        
         let mediaHtml = post.media_type === 'video' 
             ? `<video src="${post.media_url}" autoplay loop muted playsinline></video>`
             : `<img src="${post.media_url}" alt="Post Image">`;
 
-        // Notice the onclick="viewProfile('${post.user_id}')" wrapping the author row
+        let followBtnHtml = '';
+        if (currentUser && post.user_id !== currentUser.id) {
+            const isFollowing = myFollowings.has(post.user_id);
+            followBtnHtml = `<button class="feed-follow-btn ${isFollowing ? 'following' : ''}" onclick="toggleFollow(event, '${post.user_id}')">${isFollowing ? 'Following' : 'Follow'}</button>`;
+        }
+
         postDiv.innerHTML = `
             ${mediaHtml}
             <div class="post-overlay">
@@ -266,14 +364,13 @@ async function loadFeed() {
                     <div class="post-author-row" onclick="viewProfile('${post.user_id}')">
                         <div class="post-avatar" style="background-image: url('${avatarUrl}')"></div>
                         <div class="post-username">@${authorName}</div>
+                        ${followBtnHtml} 
                     </div>
-                    <div class="post-description">${descText}</div>
+                    <div class="post-description">${post.description || ''}</div>
                 </div>
                 <div class="post-actions">
                     <button class="like-btn ${userHasLiked ? 'liked' : ''}" 
-                            onclick="toggleLike('${post.id}', this, this.nextElementSibling)">
-                        ❤
-                    </button>
+                            onclick="toggleLike('${post.id}', this, this.nextElementSibling)">❤</button>
                     <span class="like-count">${likeCount}</span>
                 </div>
             </div>

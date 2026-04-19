@@ -28,17 +28,34 @@
         </div>
     </div>
 
-    <div id="profileModal" class="modal hidden">
-        <div class="modal-content">
+<div id="profileModal" class="modal full-modal hidden">
+        <div class="modal-content full-screen-content">
             <span class="close" onclick="hideModal('profileModal')">&times;</span>
-            <h2>Your Profile</h2>
-            <div id="avatarPreview" class="avatar-preview"></div>
-            <input type="file" id="avatarInput" accept="image/*">
-            <input type="text" id="username" placeholder="Username">
-            <textarea id="bio" placeholder="Short bio about yourself..."></textarea>
-            <button onclick="saveProfile()">Save Profile</button>
-            <button onclick="signOut()" style="background: #555;">Logout</button>
-            <p id="profileStatus"></p>
+            <div class="profile-header">
+                <div id="avatarPreview" class="avatar-preview"></div>
+                
+                <div class="profile-stats">
+                    <div onclick="showFollowList('followers', currentUser.id)">
+                        <strong id="myFollowersCount">0</strong> Followers
+                    </div>
+                    <div onclick="showFollowList('following', currentUser.id)">
+                        <strong id="myFollowingCount">0</strong> Following
+                    </div>
+                </div>
+
+                <div class="edit-controls">
+                    <input type="file" id="avatarInput" accept="image/*" style="font-size: 12px; margin-bottom: 5px;">
+                    <input type="text" id="username" placeholder="Username">
+                    <textarea id="bio" placeholder="Short bio about yourself..."></textarea>
+                    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 5px;">
+                        <button onclick="saveProfile()">Save</button>
+                        <button onclick="signOut()" style="background: #555;">Logout</button>
+                    </div>
+                    <p id="profileStatus"></p>
+                </div>
+            </div>
+            <h3 style="text-align: center; margin-bottom: 10px;">My Posts</h3>
+            <div id="myProfilePosts" class="profile-grid"></div>
         </div>
     </div>
 
@@ -49,8 +66,27 @@
                 <div id="viewAvatar" class="avatar-preview"></div>
                 <h2 id="viewUsername">@username</h2>
                 <p id="viewBio">Bio goes here...</p>
+                
+                <div class="profile-stats">
+                    <div onclick="showFollowList('followers', currentViewProfileId)">
+                        <strong id="viewFollowersCount">0</strong> Followers
+                    </div>
+                    <div onclick="showFollowList('following', currentViewProfileId)">
+                        <strong id="viewFollowingCount">0</strong> Following
+                    </div>
+                </div>
+
+                <button id="profileFollowBtn" class="feed-follow-btn" style="margin-top: 10px; display: none;" onclick="toggleFollow(event, currentViewProfileId, true)">Follow</button>
             </div>
             <div id="viewProfilePosts" class="profile-grid"></div>
+        </div>
+    </div>
+
+    <div id="listModal" class="modal hidden" style="z-index: 40;">
+        <div class="modal-content">
+            <span class="close" onclick="hideModal('listModal')">&times;</span>
+            <h2 id="listTitle">List</h2>
+            <div id="listContainer" class="list-container"></div>
         </div>
     </div>
 
