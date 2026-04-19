@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ScrollApp</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+    <div id="feed" class="feed-container"></div>
+
+    <nav class="bottom-nav">
+        <button onclick="loadFeed()">Home</button>
+        <button onclick="handleUploadClick()">Upload</button>
+        <button onclick="handleProfileClick()" id="profileBtn">Login</button>
+    </nav>
+
+    <div id="authModal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close" onclick="hideModal('authModal')">&times;</span>
+            <h2>Login / Register</h2>
+            <input type="email" id="email" placeholder="Email">
+            <input type="password" id="password" placeholder="Password">
+            <button onclick="signUp()">Register</button>
+            <button onclick="signIn()">Login</button>
+        </div>
+    </div>
+
+    <div id="profileModal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close" onclick="hideModal('profileModal')">&times;</span>
+            <h2>Your Profile</h2>
+            <div id="avatarPreview" class="avatar-preview"></div>
+            <input type="file" id="avatarInput" accept="image/*">
+            <input type="text" id="username" placeholder="Username">
+            <textarea id="bio" placeholder="Short bio about yourself..."></textarea>
+            <button onclick="saveProfile()">Save Profile</button>
+            <button onclick="signOut()" style="background: #555;">Logout</button>
+            <p id="profileStatus"></p>
+        </div>
+    </div>
+
+    <div id="viewProfileModal" class="modal full-modal hidden">
+        <div class="modal-content full-screen-content">
+            <span class="close" onclick="hideModal('viewProfileModal')">&times;</span>
+            <div class="profile-header">
+                <div id="viewAvatar" class="avatar-preview"></div>
+                <h2 id="viewUsername">@username</h2>
+                <p id="viewBio">Bio goes here...</p>
+            </div>
+            <div id="viewProfilePosts" class="profile-grid"></div>
+        </div>
+    </div>
+
+    <div id="uploadModal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close" onclick="hideModal('uploadModal')">&times;</span>
+            <h2>Upload Media</h2>
+            <p>Images or Videos (Unlimited Length)</p>
+            <input type="file" id="mediaInput" accept="video/mp4,video/quicktime,image/jpeg,image/png">
+            <textarea id="postDescription" placeholder="Write a caption..."></textarea>
+            <button onclick="uploadMedia()">Post</button>
+            <p id="uploadStatus"></p>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,232 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: sans-serif;
+}
+
+body {
+    background-color: #000;
+    color: #fff;
+    overflow: hidden;
+}
+
+.feed-container {
+    height: 100dvh;
+    overflow-y: scroll;
+    scroll-snap-type: y mandatory;
+    scroll-behavior: smooth;
+}
+
+.feed-container::-webkit-scrollbar {
+    display: none;
+}
+
+.post {
+    height: 100dvh;
+    width: 100vw;
+    scroll-snap-align: start;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    border-bottom: 1px solid #333;
+    background: #000;
+}
+
+.post video, .post img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+/* Instagram Reels Layout */
+.post-overlay {
+    position: absolute;
+    bottom: 0; left: 0; right: 0; top: 0;
+    pointer-events: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding: 15px 15px 80px 15px; /* 80px bottom to clear the nav bar */
+}
+
+/* Left side: Profile info and description */
+.post-info {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: auto;
+    max-width: 75%;
+    text-shadow: 1px 1px 3px rgba(0,0,0,0.9);
+}
+
+.post-author-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.post-avatar {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: #555;
+    background-size: cover;
+    background-position: center;
+    border: 1px solid white;
+}
+
+.post-username {
+    font-weight: bold;
+    font-size: 1.1em;
+}
+
+.post-description {
+    font-size: 0.9em;
+    line-height: 1.3;
+}
+
+/* Right side: Actions (Likes) */
+.post-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    pointer-events: auto;
+    margin-bottom: 15px;
+}
+
+.like-btn {
+    background: rgba(0,0,0,0.6);
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    font-size: 24px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: 0.2s;
+    border: 2px solid transparent;
+}
+
+.like-btn.liked {
+    color: #ff0050;
+    border-color: #ff0050;
+}
+
+.like-count {
+    font-size: 13px;
+    text-shadow: 1px 1px 2px #000;
+    font-weight: bold;
+}
+
+/* Navigation */
+.bottom-nav {
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    justify-content: space-around;
+    padding: 15px;
+    z-index: 10;
+}
+
+.bottom-nav button {
+    background: none;
+    color: white;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+/* Modals */
+.modal {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.9);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 20;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+.modal-content {
+    background: #222;
+    padding: 20px;
+    border-radius: 10px;
+    width: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: relative;
+    max-height: 90dvh;
+    overflow-y: auto;
+}
+
+.full-modal .full-screen-content {
+    width: 100vw;
+    height: 100dvh;
+    border-radius: 0;
+    padding-top: 40px; /* Space for close button */
+}
+
+.close {
+    position: absolute;
+    top: 15px; right: 20px;
+    font-size: 28px;
+    cursor: pointer;
+    z-index: 30;
+}
+
+input, textarea {
+    padding: 10px;
+    border-radius: 5px;
+    border: none;
+    background: #333;
+    color: white;
+    resize: none;
+}
+
+button {
+    padding: 12px;
+    border-radius: 5px;
+    border: none;
+    background: #ff0050;
+    color: white;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.avatar-preview {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: #444;
+    margin: 0 auto;
+    background-size: cover;
+    background-position: center;
+}
+
+.profile-header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.profile-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px;
+}
+
+.profile-grid img, .profile-grid video {
+    width: 100%;
+    aspect-ratio: 1; /* Makes them perfect squares */
+    object-fit: cover;
+}
