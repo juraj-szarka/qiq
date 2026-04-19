@@ -489,13 +489,14 @@ function createPostElement(post) {
     const authorName = post.profiles?.username || 'Anonymous';
     const avatarUrl = post.profiles?.avatar_url || '';
     
-    // Added ondblclick event to trigger the handleDoubleTap function
+    // 1. Removed the native ondblclick from the media elements
     let mediaHtml = post.media_type === 'video' 
-        ? `<video src="${post.media_url}" autoplay loop playsinline ondblclick="handleDoubleTap('${post.id}')"></video>`
-        : `<img src="${post.media_url}" alt="Post Image" ondblclick="handleDoubleTap('${post.id}')">`;
+        ? `<video src="${post.media_url}" autoplay loop playsinline></video>`
+        : `<img src="${post.media_url}" alt="Post Image">`;
 
     let followBtnHtml = '';
-    if (currentUser && post.user_id !== post.user_id) {
+    // 2. FIXED BUG: post.user_id !== post.user_id changed to currentUser.id !== post.user_id
+    if (currentUser && currentUser.id !== post.user_id) {
         const isFollowing = myFollowings.has(post.user_id);
         followBtnHtml = `<button class="feed-follow-btn ${isFollowing ? 'following' : ''}" onclick="toggleFollow(event, '${post.user_id}')">${isFollowing ? 'Following' : 'Follow'}</button>`;
     }
@@ -510,7 +511,6 @@ function createPostElement(post) {
         `;
     }
 
-    // Added unique IDs to the like button and like count span
     postDiv.innerHTML = `
         ${optionsMenuHtml}
         ${mediaHtml}
@@ -530,6 +530,40 @@ function createPostElement(post) {
             </div>
         </div>
     `;
+    
+    // 3. NEW CUSTOM DOUBLE TAP LOGIC
+    let lastTap = 0;
+    postDiv.addEventListener('click', (e) => {
+        // Ignore clicks on specific UI elements
+        if (e.target.closest('.post-actions') || e.target.closest('.post-info') || e.target.closest('.more-options-btn')) {
+            return; 
+        }
+
+        const currentTime = new Date().getTime();
+        const tapLength = currentTime - lastTap;
+
+        // If the time between taps is less than 300ms, consider it a double tap!
+        if (tapLength < 300 && tapLength > 0) {
+            window.handleDoubleTap(post.id);
+            e.preventDefault(); 
+            
+            // --- NEW: Heart Animation Logic ---
+            // 1. Create the heart icon
+            const heart = document.createElement('span');
+            heart.classList.add('material-icons', 'tap-heart');
+            heart.innerText = 'favorite'; 
+            
+            // 2. Add it to the center of the post
+            postDiv.appendChild(heart);
+
+            // 3. Remove it from the DOM after the animation finishes (800ms)
+            setTimeout(() => {
+                heart.remove();
+            }, 800);
+            // ----------------------------------
+        }
+        lastTap = currentTime;
+    });
     
     return postDiv;
 }
