@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ScrollApp</title>
     <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -12,9 +13,9 @@
     <div id="feed" class="feed-container"></div>
 
     <nav class="bottom-nav">
-        <button onclick="loadFeed()">Home</button>
-        <button onclick="handleUploadClick()">Upload</button>
-        <button onclick="handleProfileClick()" id="profileBtn">Login</button>
+        <button onclick="loadFeed()"><span class="material-icons">home</span></button>
+        <button onclick="handleUploadClick()"><span class="material-icons">add_box</span></button>
+        <button onclick="handleProfileClick()" id="profileBtn"><span class="material-icons">person</span></button>
     </nav>
 
     <div id="authModal" class="modal hidden">
@@ -28,7 +29,7 @@
         </div>
     </div>
 
-<div id="profileModal" class="modal full-modal hidden">
+    <div id="profileModal" class="modal full-modal hidden">
         <div class="modal-content full-screen-content">
             <span class="close" onclick="hideModal('profileModal')">&times;</span>
             <div class="profile-header">
@@ -79,6 +80,13 @@
                 <button id="profileFollowBtn" class="feed-follow-btn" style="margin-top: 10px; display: none;" onclick="toggleFollow(event, currentViewProfileId, true)">Follow</button>
             </div>
             <div id="viewProfilePosts" class="profile-grid"></div>
+        </div>
+    </div>
+
+    <div id="singlePostModal" class="modal full-modal hidden" style="z-index: 50;">
+        <div class="modal-content full-screen-content single-post-view">
+            <span class="close" onclick="hideModal('singlePostModal')" style="z-index: 60; top: 20px;">&times;</span>
+            <div id="singlePostContainer"></div>
         </div>
     </div>
 

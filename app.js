@@ -24,7 +24,6 @@ async function initializeApp() {
 
 async function updateAuthState(session) {
     currentUser = session?.user || null;
-    document.getElementById('profileBtn').innerText = currentUser ? "Profile" : "Login";
     
     if (currentUser) {
         await fetchMyFollowings();
@@ -37,7 +36,22 @@ async function updateAuthState(session) {
 
 initializeApp();
 
-// --- NEW: Follow System Logic ---
+// --- STRICT MOUSE SCROLLING FOR NOTEBOOKS ---
+let isScrolling = false;
+document.getElementById('feed').addEventListener('wheel', (e) => {
+    e.preventDefault(); // Stop default jumpy scrolling
+    if (isScrolling) return; 
+    
+    isScrolling = true;
+    const direction = e.deltaY > 0 ? 1 : -1;
+    document.getElementById('feed').scrollBy({ top: direction * window.innerHeight, behavior: 'smooth' });
+    
+    // Lock scrolling until the smooth animation finishes
+    setTimeout(() => { isScrolling = false; }, 600); 
+}, { passive: false });
+
+
+// --- Follow System Logic ---
 async function fetchMyFollowings() {
     if (!currentUser) return;
     const { data } = await client.from('follows').select('following_id').eq('follower_id', currentUser.id);
@@ -47,7 +61,7 @@ async function fetchMyFollowings() {
 }
 
 async function toggleFollow(event, targetUserId, isProfileView = false) {
-    event.stopPropagation(); // Prevents opening the profile if clicked in the feed
+    event.stopPropagation();
     if (!currentUser) return alert("Please login to follow!");
 
     const isFollowing = myFollowings.has(targetUserId);
@@ -167,13 +181,16 @@ async function loadUserProfile() {
 
     const grid = document.getElementById('myProfilePosts');
     grid.innerHTML = ""; 
-    const { data: posts } = await client.from('posts').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
+    
+    // Fetch full post details so they can be opened in the single post view
+    const { data: posts } = await client.from('posts').select(`*, profiles(username, avatar_url), likes(user_id)`).eq('user_id', currentUser.id).order('created_at', { ascending: false });
     
     if (posts) {
         posts.forEach(post => {
             const el = document.createElement(post.media_type === 'video' ? 'video' : 'img');
             el.src = post.media_url;
             if (post.media_type === 'video') el.muted = true;
+            el.onclick = () => openSinglePost(post); // NEW: Open post via profile view
             grid.appendChild(el);
         });
     }
@@ -238,12 +255,14 @@ async function viewProfile(userId) {
 
     updateProfileFollowButton(userId);
 
-    const { data: posts } = await client.from('posts').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+    // Fetch full post details so they can be opened in the single post view
+    const { data: posts } = await client.from('posts').select(`*, profiles(username, avatar_url), likes(user_id)`).eq('user_id', userId).order('created_at', { ascending: false });
     if (posts) {
         posts.forEach(post => {
             const el = document.createElement(post.media_type === 'video' ? 'video' : 'img');
             el.src = post.media_url;
             if (post.media_type === 'video') el.muted = true; 
+            el.onclick = () => openSinglePost(post); // NEW: Open post via profile view
             grid.appendChild(el);
         });
     }
@@ -266,7 +285,7 @@ function updateProfileFollowButton(userId) {
     }
 }
 
-// --- Fast Media Upload (No Length Limit) ---
+// --- Upload Media ---
 async function uploadMedia() {
     const fileInput = document.getElementById('mediaInput');
     const file = fileInput.files[0];
@@ -306,10 +325,27 @@ async function processUpload(file, statusText, type) {
             statusText.innerText = "";
         }, 1000);
         loadFeed(); 
+        if(currentUser) loadUserProfile();
     }
 }
 
-// --- Likes & Feed ---
+// --- Deletion Logic ---
+function togglePostMenu(postId) {
+    const menu = document.getElementById(`menu-${postId}`);
+    menu.classList.toggle('hidden');
+}
+
+async function deletePost(postId) {
+    if (!confirm("Are you sure you want to delete this post?")) return;
+
+    await client.from('posts').delete().eq('id', postId);
+    
+    hideModal('singlePostModal'); // Hide if viewing single post
+    loadFeed();
+    if(currentUser) loadUserProfile();
+}
+
+// --- Likes & Rendering Posts ---
 async function toggleLike(postId, btnElement, countElement) {
     if (!currentUser) return alert("Please login to like posts!");
 
@@ -326,6 +362,68 @@ async function toggleLike(postId, btnElement, countElement) {
     }
 }
 
+// Refactored to a shared function for Feed & Single View
+function createPostElement(post) {
+    const postDiv = document.createElement('div');
+    postDiv.className = 'post';
+
+    const userHasLiked = currentUser && post.likes.some(like => like.user_id === currentUser.id);
+    const likeCount = post.likes.length;
+    const authorName = post.profiles?.username || 'Anonymous';
+    const avatarUrl = post.profiles?.avatar_url || '';
+    
+    let mediaHtml = post.media_type === 'video' 
+        ? `<video src="${post.media_url}" autoplay loop playsinline></video>`
+        : `<img src="${post.media_url}" alt="Post Image">`;
+
+    let followBtnHtml = '';
+    if (currentUser && post.user_id !== currentUser.id) {
+        const isFollowing = myFollowings.has(post.user_id);
+        followBtnHtml = `<button class="feed-follow-btn ${isFollowing ? 'following' : ''}" onclick="toggleFollow(event, '${post.user_id}')">${isFollowing ? 'Following' : 'Follow'}</button>`;
+    }
+
+    // NEW: 3-Dots Menu if user owns the post
+    let optionsMenuHtml = '';
+    if (currentUser && post.user_id === currentUser.id) {
+        optionsMenuHtml = `
+            <button class="more-options-btn material-icons" onclick="togglePostMenu('${post.id}')">more_vert</button>
+            <div id="menu-${post.id}" class="post-menu hidden">
+                <button onclick="deletePost('${post.id}')">Delete Post</button>
+            </div>
+        `;
+    }
+
+    postDiv.innerHTML = `
+        ${optionsMenuHtml}
+        ${mediaHtml}
+        <div class="post-overlay">
+            <div class="post-info">
+                <div class="post-author-row" onclick="viewProfile('${post.user_id}')">
+                    <div class="post-avatar" style="background-image: url('${avatarUrl}')"></div>
+                    <div class="post-username">@${authorName}</div>
+                    ${followBtnHtml} 
+                </div>
+                <div class="post-description">${post.description || ''}</div>
+            </div>
+            <div class="post-actions">
+                <button class="like-btn ${userHasLiked ? 'liked' : ''}" 
+                        onclick="toggleLike('${post.id}', this, this.nextElementSibling)">❤</button>
+                <span class="like-count">${likeCount}</span>
+            </div>
+        </div>
+    `;
+    
+    return postDiv;
+}
+
+// Open post from Profile view
+function openSinglePost(post) {
+    const container = document.getElementById('singlePostContainer');
+    container.innerHTML = "";
+    container.appendChild(createPostElement(post));
+    showModal('singlePostModal');
+}
+
 async function loadFeed() {
     const feedContainer = document.getElementById('feed');
     feedContainer.innerHTML = ''; 
@@ -339,43 +437,6 @@ async function loadFeed() {
     if (error) return console.error(error);
 
     posts.forEach(post => {
-        const postDiv = document.createElement('div');
-        postDiv.className = 'post';
-
-        const userHasLiked = currentUser && post.likes.some(like => like.user_id === currentUser.id);
-        const likeCount = post.likes.length;
-        const authorName = post.profiles?.username || 'Anonymous';
-        const avatarUrl = post.profiles?.avatar_url || '';
-        
-        let mediaHtml = post.media_type === 'video' 
-            ? `<video src="${post.media_url}" autoplay loop muted playsinline></video>`
-            : `<img src="${post.media_url}" alt="Post Image">`;
-
-        let followBtnHtml = '';
-        if (currentUser && post.user_id !== currentUser.id) {
-            const isFollowing = myFollowings.has(post.user_id);
-            followBtnHtml = `<button class="feed-follow-btn ${isFollowing ? 'following' : ''}" onclick="toggleFollow(event, '${post.user_id}')">${isFollowing ? 'Following' : 'Follow'}</button>`;
-        }
-
-        postDiv.innerHTML = `
-            ${mediaHtml}
-            <div class="post-overlay">
-                <div class="post-info">
-                    <div class="post-author-row" onclick="viewProfile('${post.user_id}')">
-                        <div class="post-avatar" style="background-image: url('${avatarUrl}')"></div>
-                        <div class="post-username">@${authorName}</div>
-                        ${followBtnHtml} 
-                    </div>
-                    <div class="post-description">${post.description || ''}</div>
-                </div>
-                <div class="post-actions">
-                    <button class="like-btn ${userHasLiked ? 'liked' : ''}" 
-                            onclick="toggleLike('${post.id}', this, this.nextElementSibling)">❤</button>
-                    <span class="like-count">${likeCount}</span>
-                </div>
-            </div>
-        `;
-        
-        feedContainer.appendChild(postDiv);
+        feedContainer.appendChild(createPostElement(post));
     });
 }
