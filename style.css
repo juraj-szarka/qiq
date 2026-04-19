@@ -11,8 +11,13 @@ body {
     overflow: hidden;
 }
 
+/* GLOBAL HIDDEN CLASS FIX */
+.hidden {
+    display: none !important;
+}
+
 .feed-container {
-    height: 100dvh;
+    height: calc(100dvh - 70px); /* Exactly the space above the nav bar */
     overflow-y: scroll;
     scroll-snap-type: y mandatory;
     scroll-behavior: smooth;
@@ -26,6 +31,7 @@ body {
     height: 100dvh;
     width: 100vw;
     scroll-snap-align: start;
+    scroll-snap-stop: always; /* FIX: Prevents scrolling past multiple videos on mobile */
     display: flex;
     justify-content: center;
     align-items: center;
@@ -35,9 +41,16 @@ body {
 }
 
 .post video, .post img {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
+    height: calc(100dvh - 70px); /* Videos now fit perfectly above the nav */
+    width: 100vw;
+    scroll-snap-align: start;
+    scroll-snap-stop: always; 
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    border-bottom: 1px solid #333;
+    background: #000;
 }
 
 /* Instagram Reels Layout */
@@ -48,7 +61,7 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: flex-end;
-    padding: 15px 15px 80px 15px; /* 80px bottom to clear the nav bar */
+    padding: 15px 15px 20px 15px;
 }
 
 /* Left side: Profile info and description */
@@ -108,6 +121,9 @@ body {
     align-items: center;
     transition: 0.2s;
     border: 2px solid transparent;
+    cursor: pointer;
+    z-index: 50; /* FIX: Prevents tap issues on mobile */
+    -webkit-tap-highlight-color: transparent; /* FIX: removes ugly tap flash on mobile */
 }
 
 .like-btn.liked {
@@ -121,25 +137,38 @@ body {
     font-weight: bold;
 }
 
-/* Navigation */
+/* Navigation - Adjusted for Alignment */
 .bottom-nav {
     position: fixed;
     bottom: 0;
     width: 100%;
-    background: rgba(0, 0, 0, 0.8);
+    height: 70px;
+    background: rgba(0, 0, 0, 0.95);
     display: flex;
     justify-content: space-around;
-    padding: 15px;
-    z-index: 10;
+    align-items: center;
+    z-index: 1000; /* Extremely high z-index to stay above modals */
+    border-top: 1px solid #222;
 }
 
-.bottom-nav button {
+.nav-btn {
     background: none;
-    color: white;
     border: none;
-    font-size: 16px;
     cursor: pointer;
-    font-weight: bold;
+    color: #555; /* Inactive color (Gray) */
+    transition: color 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nav-btn.active {
+    color: #fff; /* Active color (White) */
+}
+
+.nav-btn span.material-icons {
+    font-size: 32px;
+    color: inherit; /* FIX: Forces icon to inherit the white/gray color state */
 }
 
 /* Modals */
@@ -151,10 +180,6 @@ body {
     justify-content: center;
     align-items: center;
     z-index: 20;
-}
-
-.modal.hidden {
-    display: none;
 }
 
 .modal-content {
@@ -170,11 +195,21 @@ body {
     overflow-y: auto;
 }
 
+/* Full Screen Modals - Alignment Fix */
+.full-modal {
+    background: #000; 
+    z-index: 30; 
+}
+
 .full-modal .full-screen-content {
     width: 100vw;
-    height: 100dvh;
+    height: calc(100dvh - 70px); /* Stop exactly at the top of the nav */
     border-radius: 0;
-    padding-top: 40px; /* Space for close button */
+    padding-top: 20px; 
+    padding-bottom: 20px; 
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
 }
 
 .close {
@@ -182,7 +217,7 @@ body {
     top: 15px; right: 20px;
     font-size: 28px;
     cursor: pointer;
-    z-index: 30;
+    z-index: 50;
 }
 
 input, textarea {
@@ -229,9 +264,14 @@ button {
     width: 100%;
     aspect-ratio: 1; /* Makes them perfect squares */
     object-fit: cover;
+    cursor: pointer;
+    transition: opacity 0.2s;
 }
 
-/* Stats Row */
+.profile-grid img:hover, .profile-grid video:hover {
+    opacity: 0.8;
+}
+
 .profile-stats {
     display: flex;
     justify-content: center;
@@ -253,7 +293,6 @@ button {
     font-size: 18px;
 }
 
-/* Edit Controls styling to fit better */
 .edit-controls {
     display: flex;
     flex-direction: column;
@@ -262,7 +301,6 @@ button {
     margin: 0 auto 20px auto;
 }
 
-/* Follow Button */
 .feed-follow-btn {
     background: transparent;
     border: 1px solid white;
@@ -279,12 +317,11 @@ button {
     color: black;
 }
 
-/* User List Container */
 .list-container {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    max-height: 50vh;
+    max-height: 60vh;
     overflow-y: auto;
     margin-top: 15px;
 }
@@ -303,14 +340,7 @@ button {
     background: #444;
 }
 
-/* --- NEW FEATURES CSS --- */
-
-/* Icons in Bottom Nav */
-.bottom-nav button span.material-icons {
-    font-size: 32px;
-}
-
-/* 3-Dots Menu Styling */
+/* 3-Dots Menu Styling Fix */
 .more-options-btn {
     position: absolute;
     top: 20px;
@@ -332,33 +362,17 @@ button {
     border: 1px solid #444;
     border-radius: 8px;
     padding: 5px;
-    z-index: 16;
+    z-index: 100; /* Brought forward to ensure clickability */
 }
 
 .post-menu button {
     background: transparent;
-    color: #ff4444; /* Red color for delete */
+    color: #ff4444; 
     font-size: 14px;
     padding: 10px 15px;
     width: 100%;
 }
 
-/* Make profile view act strictly like a new tab */
-.full-modal {
-    background: #000; /* Solid black instead of transparent */
-    z-index: 30; /* Ensure it covers the bottom nav entirely */
-}
-
-/* Clicking posts in grid */
-.profile-grid img, .profile-grid video {
-    cursor: pointer;
-    transition: opacity 0.2s;
-}
-.profile-grid img:hover, .profile-grid video:hover {
-    opacity: 0.8;
-}
-
-/* Single Post View styling */
 .single-post-view {
     padding: 0; 
     background: #000;

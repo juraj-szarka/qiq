@@ -18,7 +18,11 @@ async function initializeApp() {
     client.auth.onAuthStateChange(async (event, session) => {
         if (event === 'INITIAL_SESSION') return; 
         await updateAuthState(session);
-        loadFeed(); 
+        if (event === 'SIGNED_IN') {
+            switchTab('home'); 
+        } else if (event === 'SIGNED_OUT') {
+            switchTab('home');
+        }
     });
 }
 
@@ -36,19 +40,95 @@ async function updateAuthState(session) {
 
 initializeApp();
 
+// --- Tab Navigation System ---
+function switchTab(tabId) {
+    // 1. Update active styling on icons safely
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+    const activeBtn = document.getElementById(`nav-${tabId}`);
+    if(activeBtn) activeBtn.classList.add('active');
+
+    // 2. Hide ALL views (including the feed now)
+    document.getElementById('feed').classList.add('hidden');
+    hideModal('searchModal');
+    hideModal('uploadModal');
+    hideModal('profileModal');
+    hideModal('authModal');
+    hideModal('viewProfileModal');
+    hideModal('singlePostModal');
+
+    // 3. Show requested tab
+    if (tabId === 'home') {
+        document.getElementById('feed').classList.remove('hidden');
+        loadFeed();
+    } 
+    else if (tabId === 'search') {
+        showModal('searchModal');
+    }
+    else if (tabId === 'upload') {
+        if (!currentUser) showModal('authModal');
+        else showModal('uploadModal');
+    } 
+    else if (tabId === 'profile') {
+        if (!currentUser) showModal('authModal');
+        else showModal('profileModal');
+    }
+}
+
+
 // --- STRICT MOUSE SCROLLING FOR NOTEBOOKS ---
 let isScrolling = false;
 document.getElementById('feed').addEventListener('wheel', (e) => {
-    e.preventDefault(); // Stop default jumpy scrolling
+    e.preventDefault(); 
     if (isScrolling) return; 
     
     isScrolling = true;
     const direction = e.deltaY > 0 ? 1 : -1;
     document.getElementById('feed').scrollBy({ top: direction * window.innerHeight, behavior: 'smooth' });
     
-    // Lock scrolling until the smooth animation finishes
     setTimeout(() => { isScrolling = false; }, 600); 
 }, { passive: false });
+
+
+// --- Search System ---
+async function searchUsers() {
+    const query = document.getElementById('searchInput').value.trim();
+    const container = document.getElementById('searchResults');
+    
+    if (!query) {
+        container.innerHTML = '';
+        return;
+    }
+
+    container.innerHTML = '<p style="text-align: center;">Searching...</p>';
+    
+    const { data, error } = await client.from('profiles')
+        .select('id, username, avatar_url')
+        .ilike('username', `%${query}%`)
+        .limit(20);
+
+    if (error) {
+        container.innerHTML = '<p style="text-align: center;">Error searching.</p>';
+        return;
+    }
+
+    container.innerHTML = "";
+    
+    if (!data || data.length === 0) {
+        container.innerHTML = '<p style="text-align: center;">No users found.</p>';
+        return;
+    }
+
+    data.forEach(user => {
+        const row = document.createElement('div');
+        row.className = 'list-user-row';
+        row.onclick = () => { viewProfile(user.id); };
+        row.innerHTML = `
+            <div class="post-avatar" style="background-image: url('${user.avatar_url || ''}')"></div>
+            <div>@${user.username || 'Anonymous'}</div>
+        `;
+        container.appendChild(row);
+    });
+}
 
 
 // --- Follow System Logic ---
@@ -126,40 +206,24 @@ async function showFollowList(type, userId) {
 function showModal(id) { document.getElementById(id).classList.remove('hidden'); }
 function hideModal(id) { document.getElementById(id).classList.add('hidden'); }
 
-function handleProfileClick() {
-    if (currentUser) showModal('profileModal');
-    else showModal('authModal');
-}
-
-function handleUploadClick() {
-    if (!currentUser) {
-        alert("Please login to upload.");
-        showModal('authModal');
-    } else {
-        showModal('uploadModal');
-    }
-}
-
 // --- Authentication ---
 async function signUp() {
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
-    const { data, error } = await client.auth.signUp({ email, password });
+    const { error } = await client.auth.signUp({ email, password });
     if (error) alert(error.message);
-    else { alert("Check your email for confirmation!"); hideModal('authModal'); }
+    else alert("Check your email for confirmation!"); 
 }
 
 async function signIn() {
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
-    const { data, error } = await client.auth.signInWithPassword({ email, password });
+    const { error } = await client.auth.signInWithPassword({ email, password });
     if (error) alert(error.message);
-    else hideModal('authModal');
 }
 
 async function signOut() {
     await client.auth.signOut();
-    hideModal('profileModal');
 }
 
 // --- Profile Management ---
@@ -182,7 +246,6 @@ async function loadUserProfile() {
     const grid = document.getElementById('myProfilePosts');
     grid.innerHTML = ""; 
     
-    // Fetch full post details so they can be opened in the single post view
     const { data: posts } = await client.from('posts').select(`*, profiles(username, avatar_url), likes(user_id)`).eq('user_id', currentUser.id).order('created_at', { ascending: false });
     
     if (posts) {
@@ -190,7 +253,7 @@ async function loadUserProfile() {
             const el = document.createElement(post.media_type === 'video' ? 'video' : 'img');
             el.src = post.media_url;
             if (post.media_type === 'video') el.muted = true;
-            el.onclick = () => openSinglePost(post); // NEW: Open post via profile view
+            el.onclick = () => openSinglePost(post);
             grid.appendChild(el);
         });
     }
@@ -207,7 +270,7 @@ async function saveProfile() {
 
     if (avatarFile) {
         const fileName = `${currentUser.id}_${Date.now()}`;
-        const { data: uploadData, error: uploadError } = await client.storage.from('avatars').upload(fileName, avatarFile);
+        const { error: uploadError } = await client.storage.from('avatars').upload(fileName, avatarFile);
         if (!uploadError) {
             const { data } = client.storage.from('avatars').getPublicUrl(fileName);
             avatar_url = data.publicUrl;
@@ -222,14 +285,13 @@ async function saveProfile() {
     else {
         statusText.innerText = "Saved successfully!";
         await loadUserProfile();
-        setTimeout(() => hideModal('profileModal'), 1000);
-        loadFeed(); 
+        setTimeout(() => statusText.innerText = "", 2000);
     }
 }
 
 // --- View Other Users Profile ---
 async function viewProfile(userId) {
-    if (currentUser && userId === currentUser.id) return handleProfileClick(); 
+    if (currentUser && userId === currentUser.id) return switchTab('profile'); 
 
     currentViewProfileId = userId;
     showModal('viewProfileModal');
@@ -255,14 +317,13 @@ async function viewProfile(userId) {
 
     updateProfileFollowButton(userId);
 
-    // Fetch full post details so they can be opened in the single post view
     const { data: posts } = await client.from('posts').select(`*, profiles(username, avatar_url), likes(user_id)`).eq('user_id', userId).order('created_at', { ascending: false });
     if (posts) {
         posts.forEach(post => {
             const el = document.createElement(post.media_type === 'video' ? 'video' : 'img');
             el.src = post.media_url;
             if (post.media_type === 'video') el.muted = true; 
-            el.onclick = () => openSinglePost(post); // NEW: Open post via profile view
+            el.onclick = () => openSinglePost(post);
             grid.appendChild(el);
         });
     }
@@ -302,7 +363,7 @@ async function processUpload(file, statusText, type) {
     const fileName = `${Date.now()}_${file.name}`;
     const description = document.getElementById('postDescription').value;
 
-    const { data: storageData, error: storageError } = await client.storage.from('media').upload(fileName, file);
+    const { error: storageError } = await client.storage.from('media').upload(fileName, file);
     
     if (storageError) {
         return statusText.innerText = "Upload Error: " + storageError.message;
@@ -321,10 +382,9 @@ async function processUpload(file, statusText, type) {
         document.getElementById('postDescription').value = ""; 
         document.getElementById('mediaInput').value = ""; 
         setTimeout(() => {
-            hideModal('uploadModal');
             statusText.innerText = "";
+            switchTab('home'); // Send user back to feed after upload
         }, 1000);
-        loadFeed(); 
         if(currentUser) loadUserProfile();
     }
 }
@@ -332,17 +392,30 @@ async function processUpload(file, statusText, type) {
 // --- Deletion Logic ---
 function togglePostMenu(postId) {
     const menu = document.getElementById(`menu-${postId}`);
-    menu.classList.toggle('hidden');
+    if (menu) menu.classList.toggle('hidden');
 }
 
-async function deletePost(postId) {
+async function deletePost(event, postId, postUserId) {
+    event.stopPropagation(); // Prevents click from opening the post if triggered from profile view
+
+    if (!currentUser || currentUser.id !== postUserId) {
+        return alert("You can only delete your own posts.");
+    }
+
     if (!confirm("Are you sure you want to delete this post?")) return;
 
-    await client.from('posts').delete().eq('id', postId);
+    const { error } = await client.from('posts').delete().eq('id', postId).eq('user_id', currentUser.id);
     
-    hideModal('singlePostModal'); // Hide if viewing single post
-    loadFeed();
-    if(currentUser) loadUserProfile();
+    if (error) {
+        alert("Failed to delete: " + error.message);
+        return;
+    }
+
+    const postElementInFeed = document.getElementById(`post-container-${postId}`);
+    if (postElementInFeed) postElementInFeed.remove();
+
+    hideModal('singlePostModal'); 
+    if (currentUser) loadUserProfile(); 
 }
 
 // --- Likes & Rendering Posts ---
@@ -362,10 +435,10 @@ async function toggleLike(postId, btnElement, countElement) {
     }
 }
 
-// Refactored to a shared function for Feed & Single View
 function createPostElement(post) {
     const postDiv = document.createElement('div');
     postDiv.className = 'post';
+    postDiv.id = `post-container-${post.id}`;
 
     const userHasLiked = currentUser && post.likes.some(like => like.user_id === currentUser.id);
     const likeCount = post.likes.length;
@@ -382,13 +455,13 @@ function createPostElement(post) {
         followBtnHtml = `<button class="feed-follow-btn ${isFollowing ? 'following' : ''}" onclick="toggleFollow(event, '${post.user_id}')">${isFollowing ? 'Following' : 'Follow'}</button>`;
     }
 
-    // NEW: 3-Dots Menu if user owns the post
+    // Fixed hidden menu behavior
     let optionsMenuHtml = '';
     if (currentUser && post.user_id === currentUser.id) {
         optionsMenuHtml = `
             <button class="more-options-btn material-icons" onclick="togglePostMenu('${post.id}')">more_vert</button>
             <div id="menu-${post.id}" class="post-menu hidden">
-                <button onclick="deletePost('${post.id}')">Delete Post</button>
+                <button onclick="deletePost(event, '${post.id}', '${post.user_id}')">Delete Post</button>
             </div>
         `;
     }
@@ -416,7 +489,6 @@ function createPostElement(post) {
     return postDiv;
 }
 
-// Open post from Profile view
 function openSinglePost(post) {
     const container = document.getElementById('singlePostContainer');
     container.innerHTML = "";

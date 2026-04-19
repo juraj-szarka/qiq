@@ -12,26 +12,35 @@
 
     <div id="feed" class="feed-container"></div>
 
-    <nav class="bottom-nav">
-        <button onclick="loadFeed()"><span class="material-icons">home</span></button>
-        <button onclick="handleUploadClick()"><span class="material-icons">add_box</span></button>
-        <button onclick="handleProfileClick()" id="profileBtn"><span class="material-icons">person</span></button>
+    <nav class="bottom-nav" id="bottomNav">
+        <button id="nav-home" class="nav-btn active" onclick="switchTab('home')"><span class="material-icons">home</span></button>
+        <button id="nav-search" class="nav-btn" onclick="switchTab('search')"><span class="material-icons">search</span></button>
+        <button id="nav-upload" class="nav-btn" onclick="switchTab('upload')"><span class="material-icons">add_box</span></button>
+        <button id="nav-profile" class="nav-btn" onclick="switchTab('profile')"><span class="material-icons">person</span></button>
     </nav>
 
-    <div id="authModal" class="modal hidden">
-        <div class="modal-content">
-            <span class="close" onclick="hideModal('authModal')">&times;</span>
+    <div id="searchModal" class="modal full-modal hidden">
+        <div class="modal-content full-screen-content">
+            <h2 style="text-align: center; margin-bottom: 15px; margin-top: 10px;">Search Users</h2>
+            <input type="text" id="searchInput" placeholder="Search by username..." oninput="searchUsers()" style="width: 90%; margin: 0 auto; display: block; border: 1px solid #555;">
+            <div id="searchResults" class="list-container" style="padding: 15px; flex-grow: 1;"></div>
+        </div>
+    </div>
+
+    <div id="authModal" class="modal full-modal hidden">
+        <div class="modal-content full-screen-content" style="justify-content: center; align-items: center;">
             <h2>Login / Register</h2>
-            <input type="email" id="email" placeholder="Email">
-            <input type="password" id="password" placeholder="Password">
-            <button onclick="signUp()">Register</button>
-            <button onclick="signIn()">Login</button>
+            <input type="email" id="email" placeholder="Email" style="width: 80%;">
+            <input type="password" id="password" placeholder="Password" style="width: 80%;">
+            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <button onclick="signUp()">Register</button>
+                <button onclick="signIn()">Login</button>
+            </div>
         </div>
     </div>
 
     <div id="profileModal" class="modal full-modal hidden">
         <div class="modal-content full-screen-content">
-            <span class="close" onclick="hideModal('profileModal')">&times;</span>
             <div class="profile-header">
                 <div id="avatarPreview" class="avatar-preview"></div>
                 
@@ -60,7 +69,7 @@
         </div>
     </div>
 
-    <div id="viewProfileModal" class="modal full-modal hidden">
+    <div id="viewProfileModal" class="modal full-modal hidden" style="z-index: 40;">
         <div class="modal-content full-screen-content">
             <span class="close" onclick="hideModal('viewProfileModal')">&times;</span>
             <div class="profile-header">
@@ -90,7 +99,7 @@
         </div>
     </div>
 
-    <div id="listModal" class="modal hidden" style="z-index: 40;">
+    <div id="listModal" class="modal hidden" style="z-index: 60;">
         <div class="modal-content">
             <span class="close" onclick="hideModal('listModal')">&times;</span>
             <h2 id="listTitle">List</h2>
@@ -98,15 +107,14 @@
         </div>
     </div>
 
-    <div id="uploadModal" class="modal hidden">
-        <div class="modal-content">
-            <span class="close" onclick="hideModal('uploadModal')">&times;</span>
+    <div id="uploadModal" class="modal full-modal hidden">
+        <div class="modal-content full-screen-content" style="justify-content: center; align-items: center;">
             <h2>Upload Media</h2>
-            <p>Images or Videos (Unlimited Length)</p>
-            <input type="file" id="mediaInput" accept="video/mp4,video/quicktime,image/jpeg,image/png">
-            <textarea id="postDescription" placeholder="Write a caption..."></textarea>
-            <button onclick="uploadMedia()">Post</button>
-            <p id="uploadStatus"></p>
+            <p style="margin-bottom: 15px; color: #aaa;">Images or Videos</p>
+            <input type="file" id="mediaInput" accept="video/mp4,video/quicktime,image/jpeg,image/png" style="width: 80%; margin-bottom: 10px;">
+            <textarea id="postDescription" placeholder="Write a caption..." style="width: 80%; margin-bottom: 10px;"></textarea>
+            <button onclick="uploadMedia()" style="width: 80%;">Post</button>
+            <p id="uploadStatus" style="margin-top: 10px;"></p>
         </div>
     </div>
 
