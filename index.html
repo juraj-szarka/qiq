@@ -10,113 +10,127 @@
 </head>
 <body>
 
-    <div id="feed" class="feed-container"></div>
+    <div class="app-container">
+        
+        <div id="feed" class="feed-container"></div>
 
-    <nav class="bottom-nav" id="bottomNav">
+        <div id="searchModal" class="modal full-modal hidden">
+            <div class="modal-content full-screen-content">
+                <h2 style="text-align: center; margin-bottom: 15px; margin-top: 10px;">Search Users</h2>
+                <input type="text" id="searchInput" placeholder="Search by username..." oninput="searchUsers()" style="width: 90%; margin: 0 auto; display: block; border: 1px solid #555;">
+                <div id="searchResults" class="list-container" style="padding: 15px; flex-grow: 1;"></div>
+            </div>
+        </div>
+
+        <div id="authModal" class="modal full-modal hidden">
+            <div class="modal-content full-screen-content" style="justify-content: center; align-items: center;">
+                
+                <div id="loginView" style="width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px;">
+                    <h2>Login</h2>
+                    <input type="email" id="loginEmail" placeholder="Email" style="width: 80%;">
+                    <input type="password" id="loginPassword" placeholder="Password" style="width: 80%;">
+                    <button onclick="signIn()" style="width: 80%;">Login</button>
+                    <p style="cursor: pointer; color: #aaa; margin-top: 15px; font-size: 14px;" onclick="toggleAuthView('register')">Don't have an account? Register</p>
+                </div>
+
+                <div id="registerView" class="hidden" style="width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px;">
+                    <h2>Register</h2>
+                    <input type="email" id="registerEmail" placeholder="Email" style="width: 80%;">
+                    <input type="password" id="registerPassword" placeholder="Password" style="width: 80%;">
+                    <button onclick="signUp()" style="width: 80%;">Register</button>
+                    <p style="cursor: pointer; color: #aaa; margin-top: 15px; font-size: 14px;" onclick="toggleAuthView('login')">Already have an account? Login</p>
+                </div>
+
+            </div>
+        </div>
+
+        <div id="profileModal" class="modal full-modal hidden">
+            <div class="modal-content full-screen-content">
+                <div class="profile-header">
+                    <div id="avatarPreview" class="avatar-preview"></div>
+                    
+                    <div class="profile-stats">
+                        <div onclick="showFollowList('followers', currentUser.id)">
+                            <strong id="myFollowersCount">0</strong> Followers
+                        </div>
+                        <div onclick="showFollowList('following', currentUser.id)">
+                            <strong id="myFollowingCount">0</strong> Following
+                        </div>
+                    </div>
+
+                    <div class="edit-controls">
+                        <input type="file" id="avatarInput" accept="image/*" style="font-size: 12px; margin-bottom: 5px;">
+                        <input type="text" id="displayName" placeholder="Display Name">
+                        <input type="text" id="username" placeholder="Username">
+                        <textarea id="bio" placeholder="Short bio about yourself..."></textarea>
+                        <div style="display: flex; gap: 10px; justify-content: center; margin-top: 5px;">
+                            <button onclick="saveProfile()">Save</button>
+                            <button onclick="signOut()" style="background: #555;">Logout</button>
+                        </div>
+                        <p id="profileStatus"></p>
+                    </div>
+                </div>
+                <h3 style="text-align: center; margin-bottom: 10px;">My Posts</h3>
+                <div id="myProfilePosts" class="profile-grid"></div>
+            </div>
+        </div>
+
+        <div id="viewProfileModal" class="modal full-modal hidden" style="z-index: 40;">
+            <div class="modal-content full-screen-content">
+                <span class="close" onclick="hideModal('viewProfileModal')">&times;</span>
+                <div class="profile-header">
+                    <div id="viewAvatar" class="avatar-preview"></div>
+                    <h2 id="viewDisplayName">Name</h2>
+                    <p id="viewUsername" style="color: #aaa; font-size: 14px;">@username</p>
+                    <p id="viewBio" style="margin-top: 10px;">Bio goes here...</p>
+                    
+                    <div class="profile-stats">
+                        <div onclick="showFollowList('followers', currentViewProfileId)">
+                            <strong id="viewFollowersCount">0</strong> Followers
+                        </div>
+                        <div onclick="showFollowList('following', currentViewProfileId)">
+                            <strong id="viewFollowingCount">0</strong> Following
+                        </div>
+                    </div>
+
+                    <button id="profileFollowBtn" class="feed-follow-btn" style="margin-top: 10px; display: none;" onclick="toggleFollow(event, currentViewProfileId, true)">Follow</button>
+                </div>
+                <div id="viewProfilePosts" class="profile-grid"></div>
+            </div>
+        </div>
+
+        <div id="singlePostModal" class="modal full-modal hidden" style="z-index: 50;">
+            <div class="modal-content full-screen-content single-post-view">
+                <span class="close" onclick="hideModal('singlePostModal')" style="z-index: 60; top: 20px;">&times;</span>
+                <div id="singlePostContainer"></div>
+            </div>
+        </div>
+
+        <div id="listModal" class="modal hidden" style="z-index: 60;">
+            <div class="modal-content">
+                <span class="close" onclick="hideModal('listModal')">&times;</span>
+                <h2 id="listTitle">List</h2>
+                <div id="listContainer" class="list-container"></div>
+            </div>
+        </div>
+
+        <div id="uploadModal" class="modal full-modal hidden">
+            <div class="modal-content full-screen-content" style="justify-content: center; align-items: center;">
+                <h2>Upload Media</h2>
+                <p style="margin-bottom: 15px; color: #aaa;">Images or Videos</p>
+                <input type="file" id="mediaInput" accept="video/mp4,video/quicktime,image/jpeg,image/png" style="width: 80%; margin-bottom: 10px;">
+                <textarea id="postDescription" placeholder="Write a caption..." style="width: 80%; margin-bottom: 10px;"></textarea>
+                <button onclick="uploadMedia()" style="width: 80%;">Post</button>
+                <p id="uploadStatus" style="margin-top: 10px;"></p>
+            </div>
+        </div>
+
+    </div> <nav class="bottom-nav" id="bottomNav">
         <button id="nav-home" class="nav-btn active" onclick="switchTab('home')"><span class="material-icons">home</span></button>
         <button id="nav-search" class="nav-btn" onclick="switchTab('search')"><span class="material-icons">search</span></button>
         <button id="nav-upload" class="nav-btn" onclick="switchTab('upload')"><span class="material-icons">add_box</span></button>
         <button id="nav-profile" class="nav-btn" onclick="switchTab('profile')"><span class="material-icons">person</span></button>
     </nav>
-
-    <div id="searchModal" class="modal full-modal hidden">
-        <div class="modal-content full-screen-content">
-            <h2 style="text-align: center; margin-bottom: 15px; margin-top: 10px;">Search Users</h2>
-            <input type="text" id="searchInput" placeholder="Search by username..." oninput="searchUsers()" style="width: 90%; margin: 0 auto; display: block; border: 1px solid #555;">
-            <div id="searchResults" class="list-container" style="padding: 15px; flex-grow: 1;"></div>
-        </div>
-    </div>
-
-    <div id="authModal" class="modal full-modal hidden">
-        <div class="modal-content full-screen-content" style="justify-content: center; align-items: center;">
-            <h2>Login / Register</h2>
-            <input type="email" id="email" placeholder="Email" style="width: 80%;">
-            <input type="password" id="password" placeholder="Password" style="width: 80%;">
-            <div style="display: flex; gap: 10px; margin-top: 10px;">
-                <button onclick="signUp()">Register</button>
-                <button onclick="signIn()">Login</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="profileModal" class="modal full-modal hidden">
-        <div class="modal-content full-screen-content">
-            <div class="profile-header">
-                <div id="avatarPreview" class="avatar-preview"></div>
-                
-                <div class="profile-stats">
-                    <div onclick="showFollowList('followers', currentUser.id)">
-                        <strong id="myFollowersCount">0</strong> Followers
-                    </div>
-                    <div onclick="showFollowList('following', currentUser.id)">
-                        <strong id="myFollowingCount">0</strong> Following
-                    </div>
-                </div>
-
-                <div class="edit-controls">
-                    <input type="file" id="avatarInput" accept="image/*" style="font-size: 12px; margin-bottom: 5px;">
-                    <input type="text" id="username" placeholder="Username">
-                    <textarea id="bio" placeholder="Short bio about yourself..."></textarea>
-                    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 5px;">
-                        <button onclick="saveProfile()">Save</button>
-                        <button onclick="signOut()" style="background: #555;">Logout</button>
-                    </div>
-                    <p id="profileStatus"></p>
-                </div>
-            </div>
-            <h3 style="text-align: center; margin-bottom: 10px;">My Posts</h3>
-            <div id="myProfilePosts" class="profile-grid"></div>
-        </div>
-    </div>
-
-    <div id="viewProfileModal" class="modal full-modal hidden" style="z-index: 40;">
-        <div class="modal-content full-screen-content">
-            <span class="close" onclick="hideModal('viewProfileModal')">&times;</span>
-            <div class="profile-header">
-                <div id="viewAvatar" class="avatar-preview"></div>
-                <h2 id="viewUsername">@username</h2>
-                <p id="viewBio">Bio goes here...</p>
-                
-                <div class="profile-stats">
-                    <div onclick="showFollowList('followers', currentViewProfileId)">
-                        <strong id="viewFollowersCount">0</strong> Followers
-                    </div>
-                    <div onclick="showFollowList('following', currentViewProfileId)">
-                        <strong id="viewFollowingCount">0</strong> Following
-                    </div>
-                </div>
-
-                <button id="profileFollowBtn" class="feed-follow-btn" style="margin-top: 10px; display: none;" onclick="toggleFollow(event, currentViewProfileId, true)">Follow</button>
-            </div>
-            <div id="viewProfilePosts" class="profile-grid"></div>
-        </div>
-    </div>
-
-    <div id="singlePostModal" class="modal full-modal hidden" style="z-index: 50;">
-        <div class="modal-content full-screen-content single-post-view">
-            <span class="close" onclick="hideModal('singlePostModal')" style="z-index: 60; top: 20px;">&times;</span>
-            <div id="singlePostContainer"></div>
-        </div>
-    </div>
-
-    <div id="listModal" class="modal hidden" style="z-index: 60;">
-        <div class="modal-content">
-            <span class="close" onclick="hideModal('listModal')">&times;</span>
-            <h2 id="listTitle">List</h2>
-            <div id="listContainer" class="list-container"></div>
-        </div>
-    </div>
-
-    <div id="uploadModal" class="modal full-modal hidden">
-        <div class="modal-content full-screen-content" style="justify-content: center; align-items: center;">
-            <h2>Upload Media</h2>
-            <p style="margin-bottom: 15px; color: #aaa;">Images or Videos</p>
-            <input type="file" id="mediaInput" accept="video/mp4,video/quicktime,image/jpeg,image/png" style="width: 80%; margin-bottom: 10px;">
-            <textarea id="postDescription" placeholder="Write a caption..." style="width: 80%; margin-bottom: 10px;"></textarea>
-            <button onclick="uploadMedia()" style="width: 80%;">Post</button>
-            <p id="uploadStatus" style="margin-top: 10px;"></p>
-        </div>
-    </div>
 
     <script src="app.js"></script>
 </body>

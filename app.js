@@ -19,6 +19,7 @@ async function initializeApp() {
         if (event === 'INITIAL_SESSION') return; 
         await updateAuthState(session);
         if (event === 'SIGNED_IN') {
+            hideModal('authModal');
             switchTab('home'); 
         } else if (event === 'SIGNED_OUT') {
             switchTab('home');
@@ -35,6 +36,18 @@ async function updateAuthState(session) {
     } else {
         userProfile = null;
         myFollowings.clear();
+        
+        // Clear previous profile data from the DOM to prevent it from showing on next login
+        document.getElementById('username').value = '';
+        if(document.getElementById('displayName')) document.getElementById('displayName').value = '';
+        document.getElementById('bio').value = '';
+        document.getElementById('avatarPreview').style.backgroundImage = 'none';
+        document.getElementById('myFollowersCount').innerText = '0';
+        document.getElementById('myFollowingCount').innerText = '0';
+        document.getElementById('myProfilePosts').innerHTML = '';
+        
+        // Reset auth view to login by default
+        toggleAuthView('login');
     }
 }
 
@@ -74,7 +87,6 @@ function switchTab(tabId) {
     }
 }
 
-
 // --- STRICT MOUSE SCROLLING FOR NOTEBOOKS ---
 let isScrolling = false;
 document.getElementById('feed').addEventListener('wheel', (e) => {
@@ -87,7 +99,6 @@ document.getElementById('feed').addEventListener('wheel', (e) => {
     
     setTimeout(() => { isScrolling = false; }, 600); 
 }, { passive: false });
-
 
 // --- Search System ---
 async function searchUsers() {
@@ -129,7 +140,6 @@ async function searchUsers() {
         container.appendChild(row);
     });
 }
-
 
 // --- Follow System Logic ---
 async function fetchMyFollowings() {
@@ -207,19 +217,34 @@ function showModal(id) { document.getElementById(id).classList.remove('hidden');
 function hideModal(id) { document.getElementById(id).classList.add('hidden'); }
 
 // --- Authentication ---
+function toggleAuthView(view) {
+    if (view === 'register') {
+        document.getElementById('loginView').classList.add('hidden');
+        document.getElementById('registerView').classList.remove('hidden');
+    } else {
+        document.getElementById('registerView').classList.add('hidden');
+        document.getElementById('loginView').classList.remove('hidden');
+    }
+}
+
 async function signUp() {
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
+    const email = document.getElementById('registerEmail').value;
+    const password = document.getElementById('registerPassword').value;
     const { error } = await client.auth.signUp({ email, password });
     if (error) alert(error.message);
     else alert("Check your email for confirmation!"); 
 }
 
 async function signIn() {
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
     const { error } = await client.auth.signInWithPassword({ email, password });
-    if (error) alert(error.message);
+    if (error) {
+        alert(error.message);
+    } else {
+        document.getElementById('loginEmail').value = '';
+        document.getElementById('loginPassword').value = '';
+    }
 }
 
 async function signOut() {
@@ -455,7 +480,6 @@ function createPostElement(post) {
         followBtnHtml = `<button class="feed-follow-btn ${isFollowing ? 'following' : ''}" onclick="toggleFollow(event, '${post.user_id}')">${isFollowing ? 'Following' : 'Follow'}</button>`;
     }
 
-    // Fixed hidden menu behavior
     let optionsMenuHtml = '';
     if (currentUser && post.user_id === currentUser.id) {
         optionsMenuHtml = `
