@@ -128,6 +128,20 @@
             </div>
         </div>
 
+        <div id="commentsModal" class="modal hidden">
+            <div class="modal-content" style="height: 60vh; display: flex; flex-direction: column;">
+                <span class="close" onclick="hideModal('commentsModal')">&times;</span>
+                <h2 style="text-align: center;">Comments</h2>
+                
+                <div id="commentsList" style="flex-grow: 1; overflow-y: auto; margin-top: 10px;">
+                    </div>
+                
+                <div class="comment-input-area">
+                    <input type="text" id="newCommentInput" placeholder="Add a comment..." style="flex-grow: 1;" autocomplete="off">
+                    <button id="postCommentBtn">Post</button>
+                </div>
+            </div>
+        </div>
     </div> <nav class="bottom-nav" id="bottomNav">
         <button id="nav-home" class="nav-btn active" onclick="switchTab('home')"><span class="material-icons">home</span></button>
         <button id="nav-search" class="nav-btn" onclick="switchTab('search')"><span class="material-icons">search</span></button>

@@ -348,13 +348,27 @@ async function loadUserProfile() {
     
     const { data: posts } = await client.from('posts').select(`*, profiles(username, avatar_url), likes(user_id)`).eq('user_id', currentUser.id).order('created_at', { ascending: false });
     
+    // Inside loadUserProfile()
     if (posts) {
         posts.forEach(post => {
-            const el = document.createElement(post.media_type === 'video' ? 'video' : 'img');
-            el.src = post.media_url;
-            if (post.media_type === 'video') el.muted = true;
-            el.onclick = () => openSinglePost(post);
-            grid.appendChild(el);
+            const wrapper = document.createElement('div');
+            wrapper.className = 'profile-grid-item';
+            wrapper.onclick = () => openSinglePost(post);
+
+            // Create the media element
+            const mediaHtml = post.media_type === 'video' 
+                ? `<video src="${post.media_url}" muted playsinline></video>`
+                : `<img src="${post.media_url}">`;
+
+            // Inject media and the view count overlay
+            wrapper.innerHTML = `
+                ${mediaHtml}
+                <div class="grid-view-count">
+                    <span class="material-icons">visibility</span>
+                    ${post.views || 0}
+                </div>
+            `;
+            grid.appendChild(wrapper);
         });
     }
 }
@@ -420,11 +434,22 @@ async function viewProfile(userId) {
     const { data: posts } = await client.from('posts').select(`*, profiles(username, avatar_url), likes(user_id)`).eq('user_id', userId).order('created_at', { ascending: false });
     if (posts) {
         posts.forEach(post => {
-            const el = document.createElement(post.media_type === 'video' ? 'video' : 'img');
-            el.src = post.media_url;
-            if (post.media_type === 'video') el.muted = true; 
-            el.onclick = () => openSinglePost(post);
-            grid.appendChild(el);
+            const wrapper = document.createElement('div');
+            wrapper.className = 'profile-grid-item';
+            wrapper.onclick = () => openSinglePost(post);
+
+            const mediaHtml = post.media_type === 'video' 
+                ? `<video src="${post.media_url}" muted playsinline></video>`
+                : `<img src="${post.media_url}">`;
+
+            wrapper.innerHTML = `
+                ${mediaHtml}
+                <div class="grid-view-count">
+                    <span class="material-icons">visibility</span>
+                    ${post.views || 0}
+                </div>
+            `;
+            grid.appendChild(wrapper);
         });
     }
 }
@@ -609,7 +634,9 @@ function createPostElement(post) {
                         onclick="toggleLike('${post.id}', this, document.getElementById('like-count-${post.id}'))">❤</button>
                 <span id="like-count-${post.id}" class="like-count">${likeCount}</span>
                 
-                <button class="view-btn material-icons">visibility</button>
+                <button class="comment-btn material-icons" onclick="openComments('${post.id}')">chat</button>
+
+                <button class="view-btn material-icons" style="margin-top: 15px;">visibility</button>
                 <span id="view-count-${post.id}" class="like-count">${post.views || 0}</span>
             </div>
         </div>
@@ -753,5 +780,78 @@ async function loadFeed() {
             feedContainer.appendChild(postElement);
             feedObserver.observe(postElement); // NEW: Observe AFTER it is in the DOM
         });
+    }
+}
+
+// --- Comment System ---
+let currentCommentPostId = null;
+
+async function openComments(postId) {
+    currentCommentPostId = postId;
+    showModal('commentsModal');
+    document.getElementById('newCommentInput').value = '';
+    
+    // Attach the current post ID to the post button
+    document.getElementById('postCommentBtn').onclick = () => postComment(postId);
+    
+    await loadComments(postId);
+}
+
+async function loadComments(postId) {
+    const list = document.getElementById('commentsList');
+    list.innerHTML = '<p style="text-align:center; color: #aaa;">Loading comments...</p>';
+
+    // Fetch comments and join with the profiles table to get usernames/avatars
+    const { data, error } = await client.from('comments')
+        .select('*, profiles(username, avatar_url)')
+        .eq('post_id', postId)
+        .order('created_at', { ascending: true });
+
+    if (error) return list.innerHTML = '<p style="text-align:center;">Error loading comments.</p>';
+
+    if (!data || data.length === 0) {
+        return list.innerHTML = '<p style="text-align:center; color:#aaa; margin-top: 20px;">No comments yet. Be the first!</p>';
+    }
+
+    list.innerHTML = ''; // Clear loading text
+    data.forEach(comment => {
+        const row = document.createElement('div');
+        row.className = 'comment-row';
+        row.innerHTML = `
+            <div class="post-avatar" style="background-image: url('${comment.profiles?.avatar_url || ''}'); width: 35px; height: 35px;"></div>
+            <div class="comment-content">
+                <div class="comment-username" onclick="hideModal('commentsModal'); viewProfile('${comment.user_id}')" style="cursor: pointer;">
+                    @${comment.profiles?.username || 'Anonymous'}
+                </div>
+                <div class="comment-text">${comment.content}</div>
+            </div>
+        `;
+        list.appendChild(row);
+    });
+    
+    // Auto-scroll to the newest comment at the bottom
+    list.scrollTop = list.scrollHeight;
+}
+
+async function postComment(postId) {
+    if (!currentUser) return alert('Please login to comment!');
+    
+    const input = document.getElementById('newCommentInput');
+    const content = input.value.trim();
+    if (!content) return;
+
+    input.disabled = true; // Prevent spam clicking
+
+    const { error } = await client.from('comments').insert([
+        { post_id: postId, user_id: currentUser.id, content: content }
+    ]);
+
+    input.disabled = false;
+
+    if (error) {
+        alert('Error posting comment: ' + error.message);
+    } else {
+        input.value = '';
+        await loadComments(postId); // Refresh the list
     }
 }
