@@ -8,6 +8,23 @@ let userProfile = null;
 let myFollowings = new Set(); 
 let currentViewProfileId = null;
 
+// --- Algorithm: View Tracking System ---
+const viewedPosts = new Set();
+const feedObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        // If the post enters the screen threshold
+        if (entry.isIntersecting) {
+            const postId = entry.target.id.replace('post-container-', '');
+            // Only count a view once per session to prevent spamming
+            if (!viewedPosts.has(postId)) {
+                viewedPosts.add(postId);
+                // Trigger the SQL function we created
+                client.rpc('increment_view', { p_post_id: postId });
+            }
+        }
+    });
+}, { threshold: 0.6 }); // Triggers when 60% of the video is visible
+
 // --- App Initialization ---
 async function initializeApp() {
     const { data: { session } } = await client.auth.getSession();
@@ -409,6 +426,10 @@ async function processUpload(file, statusText, type) {
     const fileName = `${Date.now()}_${file.name}`;
     const description = document.getElementById('postDescription').value;
 
+    // ALGORITHM FEATURE: Extract hashtags from the caption
+    const hashtags = description.match(/#[\w]+/g) || [];
+    const tagsArray = hashtags.map(t => t.replace('#', '').toLowerCase());
+
     const { error: storageError } = await client.storage.from('media').upload(fileName, file);
     
     if (storageError) {
@@ -418,7 +439,13 @@ async function processUpload(file, statusText, type) {
     const { data: publicUrlData } = client.storage.from('media').getPublicUrl(fileName);
 
     const { error: dbError } = await client.from('posts').insert([
-        { user_id: currentUser.id, media_url: publicUrlData.publicUrl, media_type: type, description: description }
+        { 
+            user_id: currentUser.id, 
+            media_url: publicUrlData.publicUrl, 
+            media_type: type, 
+            description: description,
+            tags: tagsArray // Save the tags to the database
+        }
     ]);
 
     if (dbError) {
@@ -429,7 +456,7 @@ async function processUpload(file, statusText, type) {
         document.getElementById('mediaInput').value = ""; 
         setTimeout(() => {
             statusText.innerText = "";
-            switchTab('home'); // Send user back to feed after upload
+            switchTab('home'); 
         }, 1000);
         if(currentUser) loadUserProfile();
     }
@@ -581,7 +608,8 @@ function createPostElement(post) {
         }
         lastTap = currentTime;
     });
-    
+  
+    feedObserver.observe(postDiv);
     return postDiv;
 }
 
@@ -596,15 +624,54 @@ async function loadFeed() {
     const feedContainer = document.getElementById('feed');
     feedContainer.innerHTML = ''; 
 
+    // 1. Fetch top 50 trending posts using our SQL Computed Column
     const { data: posts, error } = await client
         .from('posts')
-        .select(`*, profiles(username, avatar_url), likes(user_id)`)
-        .order('created_at', { ascending: false })
-        .limit(20);
+        .select(`*, profiles(username, avatar_url), likes(user_id), engagement_score`)
+        .order('engagement_score', { ascending: false })
+        .limit(50);
 
-    if (error) return console.error(error);
+    if (error) return console.error("Feed error:", error);
 
-    posts.forEach(post => {
+    // 2. Personalize based on Tags (if logged in)
+    if (currentUser && posts.length > 0) {
+        // Find what tags the user has engaged with recently
+        const { data: userLikes } = await client
+            .from('likes')
+            .select('posts(tags)')
+            .eq('user_id', currentUser.id)
+            .limit(20);
+
+        // Build a profile of favorite tags { "funny": 3, "coding": 1 }
+        const tagPreferences = {};
+        if (userLikes) {
+            userLikes.forEach(like => {
+                const postTags = like.posts?.tags || [];
+                postTags.forEach(tag => {
+                    tagPreferences[tag] = (tagPreferences[tag] || 0) + 1;
+                });
+            });
+        }
+
+        // Re-calculate scores with a Tag Multiplier
+        posts.sort((a, b) => {
+            let aTagScore = 0;
+            let bTagScore = 0;
+
+            (a.tags || []).forEach(tag => { if(tagPreferences[tag]) aTagScore += tagPreferences[tag]; });
+            (b.tags || []).forEach(tag => { if(tagPreferences[tag]) bTagScore += tagPreferences[tag]; });
+
+            // Each matching tag gives a heavy boost to the base engagement score
+            const finalScoreA = a.engagement_score + (aTagScore * 10);
+            const finalScoreB = b.engagement_score + (bTagScore * 10);
+
+            return finalScoreB - finalScoreA; // Sort highest to lowest
+        });
+    }
+
+    // 3. Render the top 20 personalized posts
+    const finalFeed = posts.slice(0, 20);
+    finalFeed.forEach(post => {
         feedContainer.appendChild(createPostElement(post));
     });
 }
