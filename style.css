@@ -203,7 +203,7 @@ body {
     flex-direction: column;
     gap: 12px;
     position: relative;
-    max-height: 90%;
+    max-height: 100%;
     overflow-y: auto;
 }
 
