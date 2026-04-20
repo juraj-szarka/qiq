@@ -12,8 +12,11 @@
 
     <div class="app-container">
         
+        <div id="topFeedNav" class="top-nav">
+            <button id="tab-foryou" class="top-nav-btn active" onclick="switchFeedTab('foryou')">For You</button>
+            <button id="tab-following" class="top-nav-btn" onclick="switchFeedTab('following')">Following</button>
+        </div>
         <div id="feed" class="feed-container"></div>
-
         <div id="searchModal" class="modal full-modal hidden">
             <div class="modal-content full-screen-content">
                 <h2 style="text-align: center; margin-bottom: 15px; margin-top: 10px;">Search Users</h2>

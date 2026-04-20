@@ -8,22 +8,43 @@ let userProfile = null;
 let myFollowings = new Set(); 
 let currentViewProfileId = null;
 
+let currentFeedMode = 'foryou'; // Can be 'foryou' or 'following'
+
 // --- Algorithm: View Tracking System ---
 const viewedPosts = new Set();
 const feedObserver = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
-        // If the post enters the screen threshold
         if (entry.isIntersecting) {
             const postId = entry.target.id.replace('post-container-', '');
-            // Only count a view once per session to prevent spamming
+            
+            // Prevent spamming the DB by checking our local set first
             if (!viewedPosts.has(postId)) {
                 viewedPosts.add(postId);
-                // Trigger the SQL function we created
-                client.rpc('increment_view', { p_post_id: postId });
+                
+                // 1. Optimistically update the UI view count immediately
+                const viewCountElement = document.getElementById(`view-count-${postId}`);
+                if (viewCountElement) {
+                    const currentViews = parseInt(viewCountElement.innerText) || 0;
+                    viewCountElement.innerText = currentViews + 1;
+                }
+                
+                // 2. Call the SQL function in the background
+                const userIdToPass = currentUser ? currentUser.id : null;
+                client.rpc('record_post_view', { p_user_id: userIdToPass, p_post_id: postId })
+                    .then(({ error }) => {
+                        if (error) console.error("Error recording view in DB:", error.message);
+                    });
             }
         }
     });
 }, { threshold: 0.6 }); // Triggers when 60% of the video is visible
+
+function switchFeedTab(mode) {
+    currentFeedMode = mode;
+    document.querySelectorAll('.top-nav-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById(`tab-${mode}`).classList.add('active');
+    loadFeed(); // Reload the feed with the new mode
+}
 
 // --- App Initialization ---
 async function initializeApp() {
@@ -89,18 +110,23 @@ function switchTab(tabId) {
     // 3. Show requested tab
     if (tabId === 'home') {
         document.getElementById('feed').classList.remove('hidden');
+        document.getElementById('topFeedNav').classList.remove('hidden'); // Show top tabs
         loadFeed();
-    } 
-    else if (tabId === 'search') {
-        showModal('searchModal');
-    }
-    else if (tabId === 'upload') {
-        if (!currentUser) showModal('authModal');
-        else showModal('uploadModal');
-    } 
-    else if (tabId === 'profile') {
-        if (!currentUser) showModal('authModal');
-        else showModal('profileModal');
+    } else {
+        document.getElementById('topFeedNav').classList.add('hidden'); // Hide on other pages
+        // ... rest of your if/else logic ...
+    
+        if (tabId === 'search') {
+            showModal('searchModal');
+        }
+        else if (tabId === 'upload') {
+            if (!currentUser) showModal('authModal');
+            else showModal('uploadModal');
+        } 
+        else if (tabId === 'profile') {
+            if (!currentUser) showModal('authModal');
+            else showModal('profileModal');
+        }
     }
 }
 
@@ -571,6 +597,9 @@ function createPostElement(post) {
                 <button id="like-btn-${post.id}" class="like-btn ${userHasLiked ? 'liked' : ''}" 
                         onclick="toggleLike('${post.id}', this, document.getElementById('like-count-${post.id}'))">❤</button>
                 <span id="like-count-${post.id}" class="like-count">${likeCount}</span>
+                
+                <button class="view-btn material-icons">visibility</button>
+                <span id="view-count-${post.id}" class="like-count">${post.views || 0}</span>
             </div>
         </div>
     `;
@@ -622,56 +651,92 @@ function openSinglePost(post) {
 
 async function loadFeed() {
     const feedContainer = document.getElementById('feed');
-    feedContainer.innerHTML = ''; 
+    feedContainer.innerHTML = '<div style="color:white; text-align:center; padding-top:50vh;">Loading...</div>'; 
 
-    // 1. Fetch top 50 trending posts using our SQL Computed Column
-    const { data: posts, error } = await client
-        .from('posts')
-        .select(`*, profiles(username, avatar_url), likes(user_id), engagement_score`)
-        .order('engagement_score', { ascending: false })
-        .limit(50);
+    let query = client.from('posts').select(`*, profiles(username, avatar_url), likes(user_id), engagement_score`);
 
-    if (error) return console.error("Feed error:", error);
+    // --- 1. Filter by Following if needed ---
+    if (currentFeedMode === 'following') {
+        if (!currentUser) return feedContainer.innerHTML = '<div style="color:white; text-align:center; padding-top:50vh;">Please login to see followed accounts.</div>';
+        if (myFollowings.size === 0) return feedContainer.innerHTML = '<div style="color:white; text-align:center; padding-top:50vh;">You are not following anyone yet.</div>';
+        
+        // Only fetch posts from people we follow
+        query = query.in('user_id', Array.from(myFollowings));
+    }
 
-    // 2. Personalize based on Tags (if logged in)
-    if (currentUser && posts.length > 0) {
-        // Find what tags the user has engaged with recently
-        const { data: userLikes } = await client
-            .from('likes')
-            .select('posts(tags)')
-            .eq('user_id', currentUser.id)
-            .limit(20);
+    // Fetch the posts
+    const { data: posts, error } = await query.order('engagement_score', { ascending: false }).limit(60);
+    if (error || !posts) return console.error("Feed error:", error);
 
-        // Build a profile of favorite tags { "funny": 3, "coding": 1 }
+    let finalPosts = posts;
+
+    // --- 2. For You Page Algorithm & Viewed Separation ---
+    let unseenPosts = [];
+    let seenPosts = [];
+
+    if (currentUser) {
+        // A. Fetch all post IDs the user has already viewed
+        const { data: viewedData } = await client.from('post_views').select('post_id').eq('user_id', currentUser.id);
+        const viewedIds = new Set(viewedData ? viewedData.map(v => v.post_id) : []);
+
+        // B. Fetch user tag preferences for the For You algorithm
+        const { data: userLikes } = await client.from('likes').select('posts(tags)').eq('user_id', currentUser.id).limit(20);
         const tagPreferences = {};
         if (userLikes) {
             userLikes.forEach(like => {
-                const postTags = like.posts?.tags || [];
-                postTags.forEach(tag => {
-                    tagPreferences[tag] = (tagPreferences[tag] || 0) + 1;
-                });
+                (like.posts?.tags || []).forEach(tag => { tagPreferences[tag] = (tagPreferences[tag] || 0) + 1; });
             });
         }
 
-        // Re-calculate scores with a Tag Multiplier
-        posts.sort((a, b) => {
-            let aTagScore = 0;
-            let bTagScore = 0;
+        // C. Apply Algorithmic Tag Boost & Separate Seen vs Unseen
+        posts.forEach(post => {
+            let tagScore = 0;
+            (post.tags || []).forEach(tag => { if (tagPreferences[tag]) tagScore += tagPreferences[tag]; });
+            post.calculated_score = post.engagement_score + (tagScore * 10);
 
-            (a.tags || []).forEach(tag => { if(tagPreferences[tag]) aTagScore += tagPreferences[tag]; });
-            (b.tags || []).forEach(tag => { if(tagPreferences[tag]) bTagScore += tagPreferences[tag]; });
-
-            // Each matching tag gives a heavy boost to the base engagement score
-            const finalScoreA = a.engagement_score + (aTagScore * 10);
-            const finalScoreB = b.engagement_score + (bTagScore * 10);
-
-            return finalScoreB - finalScoreA; // Sort highest to lowest
+            // Separate them
+            if (viewedIds.has(post.id)) {
+                seenPosts.push(post);
+            } else {
+                unseenPosts.push(post);
+            }
         });
+
+        // D. Sort both arrays highest to lowest by our new calculated score
+        unseenPosts.sort((a, b) => b.calculated_score - a.calculated_score);
+        seenPosts.sort((a, b) => b.calculated_score - a.calculated_score);
+    } else {
+        // If logged out, just show everything sorted by engagement score
+        unseenPosts = posts; 
     }
 
-    // 3. Render the top 20 personalized posts
-    const finalFeed = posts.slice(0, 20);
-    finalFeed.forEach(post => {
-        feedContainer.appendChild(createPostElement(post));
-    });
+    feedContainer.innerHTML = ''; // Clear loading text
+
+    // --- 3. Render the Feed ---
+    
+    // Render Unseen videos first
+    unseenPosts.forEach(post => feedContainer.appendChild(createPostElement(post)));
+
+    // If they have seen videos, show the "Caught Up" divider, then show the seen videos
+    if (currentUser && seenPosts.length > 0) {
+        
+        // Only show the divider if there were actually *some* new videos before it.
+        if (unseenPosts.length > 0) {
+            const divider = document.createElement('div');
+            divider.className = 'caught-up-divider';
+            divider.innerHTML = `
+                <span class="material-icons">check_circle</span>
+                <h2>You're all caught up!</h2>
+                <p>You've seen all new posts. Here are some older ones.</p>
+            `;
+            feedContainer.appendChild(divider);
+        }
+
+        // Render the already viewed videos below
+        seenPosts.forEach(post => feedContainer.appendChild(createPostElement(post)));
+    }
+
+    if (unseenPosts.length === 0 && seenPosts.length === 0) {
+        feedContainer.innerHTML = '<div style="color:white; text-align:center; padding-top:50vh;">No posts available yet.</div>';
+    }
 }

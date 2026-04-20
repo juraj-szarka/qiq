@@ -416,3 +416,61 @@ button {
     70% { transform: translate(-50%, -50%) scale(4); opacity: 1; }
     100% { transform: translate(-50%, -50%) scale(7); opacity: 0; } /* Larger exit scale */
 }
+
+/* Top Feed Navigation */
+.top-nav {
+    position: absolute;
+    top: 20px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    z-index: 10;
+    pointer-events: auto;
+}
+
+.top-nav-btn {
+    background: transparent;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 16px;
+    font-weight: bold;
+    padding: 5px 10px;
+    text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
+    transition: 0.2s;
+}
+
+.top-nav-btn.active {
+    color: #fff;
+    border-bottom: 2px solid #fff;
+    border-radius: 0;
+}
+
+/* Views and Caught Up Divider */
+.view-btn {
+    background: transparent;
+    color: white;
+    border: none;
+    font-size: 28px;
+    cursor: default;
+}
+
+.caught-up-divider {
+    height: 100%;
+    width: 100%;
+    scroll-snap-align: start;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: #111;
+    color: #aaa;
+    text-align: center;
+    border-bottom: 1px solid #333;
+}
+
+.caught-up-divider span {
+    font-size: 48px;
+    color: #4CAF50;
+    margin-bottom: 10px;
+}
