@@ -346,8 +346,8 @@ async function loadUserProfile() {
     const grid = document.getElementById('myProfilePosts');
     grid.innerHTML = ""; 
     
-    const { data: posts } = await client.from('posts').select(`*, profiles(username, avatar_url), likes(user_id)`).eq('user_id', currentUser.id).order('created_at', { ascending: false });
-    
+    const { data: posts } = await client.from('posts').select(`*, profiles(username, avatar_url), likes(user_id), comments(id)`).eq('user_id', currentUser.id).order('created_at', { ascending: false });
+
     // Inside loadUserProfile()
     if (posts) {
         posts.forEach(post => {
@@ -592,6 +592,7 @@ function createPostElement(post) {
 
     const userHasLiked = currentUser && post.likes.some(like => like.user_id === currentUser.id);
     const likeCount = post.likes.length;
+    const commentCount = post.comments ? post.comments.length : 0;
     const authorName = post.profiles?.username || 'Anonymous';
     const avatarUrl = post.profiles?.avatar_url || '';
     
@@ -635,6 +636,7 @@ function createPostElement(post) {
                 <span id="like-count-${post.id}" class="like-count">${likeCount}</span>
                 
                 <button class="comment-btn material-icons" onclick="openComments('${post.id}')">chat</button>
+                <span id="comment-count-${post.id}" class="like-count">${commentCount}</span>
 
                 <button class="view-btn material-icons" style="margin-top: 15px;">visibility</button>
                 <span id="view-count-${post.id}" class="like-count">${post.views || 0}</span>
@@ -691,7 +693,7 @@ async function loadFeed() {
     const feedContainer = document.getElementById('feed');
     feedContainer.innerHTML = '<div style="color:white; text-align:center; padding-top:50vh;">Loading...</div>'; 
 
-    let query = client.from('posts').select(`*, profiles(username, avatar_url), likes(user_id), engagement_score`);
+    let query = client.from('posts').select(`*, profiles(username, avatar_url), likes(user_id), comments(id), engagement_score`);
 
     // --- 1. Filter by Following if needed ---
     if (currentFeedMode === 'following') {
@@ -718,14 +720,22 @@ async function loadFeed() {
         const viewedIds = new Set(viewedData ? viewedData.map(v => v.post_id) : []);
 
         // B. Fetch user tag preferences for the For You algorithm
-        const { data: userLikes } = await client.from('likes').select('posts(tags)').eq('user_id', currentUser.id).limit(20);
+        const { data: userLikes, error: likesError } = await client.from('likes').select('posts(tags)').eq('user_id', currentUser.id).limit(20);
         const tagPreferences = {};
-        if (userLikes) {
+        
+        if (userLikes && !likesError) {
             userLikes.forEach(like => {
-                (like.posts?.tags || []).forEach(tag => { tagPreferences[tag] = (tagPreferences[tag] || 0) + 1; });
+                // Safely handle how Supabase returns the 'posts' relation
+                const likedPost = Array.isArray(like.posts) ? like.posts[0] : like.posts;
+                
+                // Only loop if tags actually exist and is an array
+                if (likedPost && Array.isArray(likedPost.tags)) {
+                    likedPost.tags.forEach(tag => { 
+                        tagPreferences[tag] = (tagPreferences[tag] || 0) + 1; 
+                    });
+                }
             });
         }
-
         // C. Apply Algorithmic Tag Boost & Separate Seen vs Unseen
         posts.forEach(post => {
             let tagScore = 0;
@@ -853,5 +863,11 @@ async function postComment(postId) {
     } else {
         input.value = '';
         await loadComments(postId); // Refresh the list
+
+        // NEW: Instantly update the count on the feed!
+        const countElement = document.getElementById(`comment-count-${postId}`);
+        if (countElement) {
+            countElement.innerText = parseInt(countElement.innerText) + 1;
+        }
     }
 }
