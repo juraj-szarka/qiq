@@ -552,3 +552,50 @@ button {
     margin-bottom: -15px; /* Adjust spacing in the post-actions area */
     transition: 0.2s;
 }
+
+/* --- Modal Stacking Fixes --- */
+#searchModal { z-index: 1010; }
+#uploadModal { z-index: 1010; }
+#profileModal { z-index: 1010; }
+#authModal { z-index: 1015; }
+#viewProfileModal { z-index: 1020 !important; }
+#singlePostModal { z-index: 1030 !important; }
+#listModal { z-index: 1040 !important; }
+#commentsModal { z-index: 1050 !important; }
+
+/* --- Direct Messages & Notifications --- */
+.nav-badge {
+    position: absolute;
+    top: 5px;
+    right: 15px;
+    background: #ff0050;
+    color: white;
+    border-radius: 50%;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: bold;
+    border: 2px solid #000;
+}
+
+.chat-msg {
+    max-width: 75%;
+    padding: 10px 14px;
+    border-radius: 18px;
+    font-size: 14px;
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.chat-msg.sent {
+    background: #ff0050;
+    color: white;
+    align-self: flex-end;
+    border-bottom-right-radius: 4px;
+}
+
+.chat-msg.received {
+    background: #333;
+    color: white;
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+}

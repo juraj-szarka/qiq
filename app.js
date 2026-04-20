@@ -15,6 +15,58 @@ let currentFeedMode = 'foryou'; // Can be 'foryou' or 'following'
 const viewedPosts = new Set();
 const viewTimers = new Map(); // Tracks how long a user stays on a post
 
+// --- Video Playback & Focus Management ---
+const videoObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        const video = entry.target;
+        const isHidden = video.closest('.hidden') !== null;
+        
+        if (entry.isIntersecting && !isHidden) {
+            video.play().catch(e => console.log("Autoplay prevented:", e));
+        } else {
+            video.pause();
+            video.currentTime = 0; // Rewind to start when scrolled away
+        }
+    });
+}, { threshold: 0.6 });
+
+// 1. Play/Pause with Spacebar
+document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') {
+        // Prevent spacebar from triggering if typing in a comment/search
+        if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+        e.preventDefault();
+        
+        document.querySelectorAll('.post video').forEach(video => {
+            // Check if video is visible in the DOM
+            if (video.offsetParent !== null) {
+                const rect = video.getBoundingClientRect();
+                // Check if it's currently focused in the viewport
+                if (rect.top >= -window.innerHeight * 0.5 && rect.bottom <= window.innerHeight * 1.5) {
+                    if (video.paused) video.play().catch(e => {});
+                    else video.pause();
+                }
+            }
+        });
+    }
+});
+
+// 2. Pause when switching browser tabs or minimizing the window
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        document.querySelectorAll('video').forEach(v => v.pause());
+    } else {
+        document.querySelectorAll('.post video').forEach(video => {
+            if (video.offsetParent !== null) {
+                const rect = video.getBoundingClientRect();
+                if (rect.top >= -window.innerHeight * 0.5 && rect.bottom <= window.innerHeight * 1.5) {
+                    video.play().catch(e => {});
+                }
+            }
+        });
+    }
+});
+
 const feedObserver = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
         const postId = entry.target.id.replace('post-container-', '');
@@ -274,6 +326,27 @@ async function showFollowList(type, userId) {
 function showModal(id) { document.getElementById(id).classList.remove('hidden'); }
 function hideModal(id) { document.getElementById(id).classList.add('hidden'); }
 
+function closeSinglePostModal() {
+    hideModal('singlePostModal');
+    const container = document.getElementById('singlePostContainer');
+    const video = container.querySelector('video');
+    if (video) video.pause(); // Stop video before clearing
+    container.innerHTML = ""; // Clear to prevent duplicate DOM IDs
+}
+
+function closeViewProfileModal() {
+    hideModal('viewProfileModal');
+    // Resume the feed video if returning to the home tab
+    if (document.getElementById('feed').offsetParent !== null) {
+        document.querySelectorAll('#feed video').forEach(video => {
+            const rect = video.getBoundingClientRect();
+            if (rect.top >= -window.innerHeight * 0.5 && rect.bottom <= window.innerHeight * 1.5) {
+                video.play().catch(e => {});
+            }
+        });
+    }
+}
+
 // --- Authentication ---
 function toggleAuthView(view) {
     if (view === 'register') {
@@ -406,6 +479,8 @@ async function saveProfile() {
 // --- View Other Users Profile ---
 async function viewProfile(userId) {
     if (currentUser && userId === currentUser.id) return switchTab('profile'); 
+
+    document.querySelectorAll('#feed video').forEach(v => v.pause());
 
     currentViewProfileId = userId;
     showModal('viewProfileModal');
@@ -598,9 +673,8 @@ function createPostElement(post) {
     
     // 1. Removed the native ondblclick from the media elements
     let mediaHtml = post.media_type === 'video' 
-        ? `<video src="${post.media_url}" autoplay loop playsinline></video>`
+        ? `<video src="${post.media_url}" loop playsinline></video>`
         : `<img src="${post.media_url}" alt="Post Image">`;
-
     let followBtnHtml = '';
     // 2. FIXED BUG: post.user_id !== post.user_id changed to currentUser.id !== post.user_id
     if (currentUser && currentUser.id !== post.user_id) {
@@ -632,7 +706,7 @@ function createPostElement(post) {
             </div>
             <div class="post-actions">
                 <button id="like-btn-${post.id}" class="like-btn ${userHasLiked ? 'liked' : ''}" 
-                        onclick="toggleLike('${post.id}', this, document.getElementById('like-count-${post.id}'))">❤</button>
+                        onclick="toggleLike('${post.id}', this, this.nextElementSibling)">❤</button>
                 <span id="like-count-${post.id}" class="like-count">${likeCount}</span>
                 
                 <button class="comment-btn material-icons" onclick="openComments('${post.id}')">chat</button>
@@ -644,49 +718,83 @@ function createPostElement(post) {
         </div>
     `;
     
-    // 3. NEW CUSTOM DOUBLE TAP LOGIC
-    let lastTap = 0;
+// --- 3. NEW CUSTOM TAP LOGIC (Single = Play/Pause, Double = Like) ---
+    let clickTimer = null;
+    
     postDiv.addEventListener('click', (e) => {
-        // Ignore clicks on specific UI elements
+        // Ignore clicks on specific UI buttons
         if (e.target.closest('.post-actions') || e.target.closest('.post-info') || e.target.closest('.more-options-btn')) {
             return; 
         }
 
-        const currentTime = new Date().getTime();
-        const tapLength = currentTime - lastTap;
+        const video = postDiv.querySelector('video');
 
-        // If the time between taps is less than 300ms, consider it a double tap!
-        if (tapLength < 300 && tapLength > 0) {
+        // If no timer exists, this is the first tap
+        if (clickTimer === null) {
+            clickTimer = setTimeout(() => {
+                // Timer finished! It was just a single tap.
+                clickTimer = null;
+                
+                // --- SINGLE TAP: Play / Pause ---
+                if (video) {
+                    if (video.paused) {
+                        video.play().catch(err => console.log("Play prevented by browser:", err));
+                    } else {
+                        video.pause();
+                    }
+                }
+            }, 250); // Wait 250ms to see if a second tap happens
+        } 
+        else {
+            // A timer is running, meaning this is the SECOND tap!
+            clearTimeout(clickTimer);
+            clickTimer = null;
+            
+            // --- DOUBLE TAP: Like ---
             window.handleDoubleTap(post.id);
             e.preventDefault(); 
             
-            // --- NEW: Heart Animation Logic ---
-            // 1. Create the heart icon
+            // Heart Animation Logic
             const heart = document.createElement('span');
             heart.classList.add('material-icons', 'tap-heart');
             heart.innerText = 'favorite'; 
-            
-            // 2. Add it to the center of the post
             postDiv.appendChild(heart);
 
-            // 3. Remove it from the DOM after the animation finishes (800ms)
             setTimeout(() => {
                 heart.remove();
             }, 800);
-            // ----------------------------------
         }
-        lastTap = currentTime;
     });
-  
+
+    // Attach the video element to the playback observer
+    const videoElement = postDiv.querySelector('video');
+    if (videoElement) {
+        videoObserver.observe(videoElement);
+    }
 
     return postDiv;
 }
 
 function openSinglePost(post) {
+    // Pause all background feed videos
+    document.querySelectorAll('.post video').forEach(v => v.pause());
+
     const container = document.getElementById('singlePostContainer');
     container.innerHTML = "";
-    container.appendChild(createPostElement(post));
+    
+    const postElement = createPostElement(post);
+    container.appendChild(postElement);
+    
     showModal('singlePostModal');
+
+    // Force play the video specifically for the modal
+    const video = postElement.querySelector('video');
+    if (video) {
+        // Small delay ensures the modal is fully visible to the browser before playing
+        setTimeout(() => {
+            video.play().catch(e => console.log("Modal autoplay prevented:", e));
+        }, 100);
+    }
 }
 
 async function loadFeed() {
@@ -785,13 +893,24 @@ async function loadFeed() {
         }
 
         // Render the already viewed videos below
+// ... [Previous loadFeed code rendering seenPosts] ...
         seenPosts.forEach(post => {
             const postElement = createPostElement(post);
             feedContainer.appendChild(postElement);
-            feedObserver.observe(postElement); // NEW: Observe AFTER it is in the DOM
+            feedObserver.observe(postElement); 
         });
     }
-}
+
+    // NEW: Force the first video in the feed to play!
+    setTimeout(() => {
+        const firstVideo = feedContainer.querySelector('.post video');
+        if (firstVideo) {
+            firstVideo.play().catch(e => {
+                console.log("Browser blocked unmuted autoplay. User must interact first.", e);
+            });
+        }
+    }, 200); 
+} // <-- This is the end of the loadFeed() function}
 
 // --- Comment System ---
 let currentCommentPostId = null;
@@ -870,4 +989,222 @@ async function postComment(postId) {
             countElement.innerText = parseInt(countElement.innerText) + 1;
         }
     }
+}
+
+// --- DM & Notification System ---
+let messageInterval = null;
+let currentChatUserId = null;
+
+// Attach this to updateAuthState to start/stop checking messages
+const originalUpdateAuthState = updateAuthState;
+updateAuthState = async function(session) {
+    await originalUpdateAuthState(session);
+    if (currentUser) {
+        pollMessages();
+        if(!messageInterval) messageInterval = setInterval(pollMessages, 3000); // Check every 3 seconds
+    } else {
+        if(messageInterval) clearInterval(messageInterval);
+    }
+}
+
+// Update your switchTab function to handle the new messages tab
+// Update your switchTab function to handle the new messages tab AND close the chat
+const originalSwitchTab = switchTab;
+switchTab = function(tabId) {
+    originalSwitchTab(tabId);
+    hideModal('messagesModal'); // Ensure messages hide when leaving
+    hideModal('chatModal');     // NEW: Ensure the open chat closes too!
+    currentChatUserId = null;   // NEW: Reset the chat tracking
+    
+    if (tabId === 'messages') {
+        if (!currentUser) showModal('authModal');
+        else {
+            showModal('messagesModal');
+            loadInbox();
+        }
+    }
+}
+
+// Update your viewProfile function to show the Message button
+const originalViewProfile = viewProfile;
+viewProfile = async function(userId) {
+    await originalViewProfile(userId);
+    const msgBtn = document.getElementById('profileMessageBtn');
+    if (msgBtn) {
+        if (currentUser && currentUser.id !== userId) {
+            msgBtn.style.display = 'inline-block';
+        } else {
+            msgBtn.style.display = 'none';
+        }
+    }
+}
+
+async function pollMessages() {
+    if (!currentUser) return;
+    
+    // 1. Check for unread notification count
+    const { count } = await client.from('messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('receiver_id', currentUser.id)
+        .eq('is_read', false);
+    
+    const badge = document.getElementById('unreadBadge');
+    if (badge) {
+        if (count > 0) {
+            badge.innerText = count;
+            badge.classList.remove('hidden');
+        } else {
+            badge.classList.add('hidden');
+        }
+    }
+
+    // 2. Auto-refresh chat if currently open
+    if (currentChatUserId) loadChatMessages(true);
+}
+
+async function loadInbox() {
+    const container = document.getElementById('inboxList');
+    container.innerHTML = '<p style="text-align: center;">Loading...</p>';
+
+    // Fetch all messages to build the inbox UI
+    const { data, error } = await client.from('messages')
+        .select(`
+            id, content, created_at, is_read, sender_id, receiver_id,
+            sender:profiles!messages_sender_id_fkey(id, username, avatar_url),
+            receiver:profiles!messages_receiver_id_fkey(id, username, avatar_url)
+        `)
+        .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
+        .order('created_at', { ascending: false });
+    
+    if (error) return container.innerHTML = '<p style="text-align: center;">Error loading inbox.</p>';
+
+    const threads = {};
+    data.forEach(msg => {
+        const otherUser = msg.sender_id === currentUser.id ? msg.receiver : msg.sender;
+        if (!threads[otherUser.id]) {
+            threads[otherUser.id] = {
+                user: otherUser,
+                lastMsg: msg.content,
+                unread: msg.receiver_id === currentUser.id && !msg.is_read
+            };
+        }
+    });
+
+    container.innerHTML = '';
+    const threadKeys = Object.keys(threads);
+    if(threadKeys.length === 0) return container.innerHTML = '<p style="text-align: center; color: #aaa;">No messages yet.</p>';
+
+    threadKeys.forEach(userId => {
+        const thread = threads[userId];
+        const row = document.createElement('div');
+        row.className = 'list-user-row';
+        row.onclick = () => openChat(userId);
+        row.innerHTML = `
+            <div class="post-avatar" style="background-image: url('${thread.user.avatar_url || ''}')"></div>
+            <div style="flex-grow: 1;">
+                <div style="font-weight: bold;">@${thread.user.username}</div>
+                <div style="font-size: 13px; color: ${thread.unread ? '#fff' : '#aaa'}; font-weight: ${thread.unread ? 'bold' : 'normal'}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;">
+                    ${thread.lastMsg}
+                </div>
+            </div>
+            ${thread.unread ? '<div style="width: 10px; height: 10px; background: #ff0050; border-radius: 50%;"></div>' : ''}
+        `;
+        container.appendChild(row);
+    });
+}
+
+async function openChat(userId) {
+    currentChatUserId = userId;
+    showModal('chatModal');
+    
+    const chatMessages = document.getElementById('chatMessages');
+    chatMessages.innerHTML = '<p style="text-align:center;">Loading...</p>';
+
+    // Load header details
+    const { data: profile } = await client.from('profiles').select('username, avatar_url').eq('id', userId).single();
+    if (profile) {
+        document.getElementById('chatUsername').innerText = '@' + profile.username;
+        document.getElementById('chatAvatar').style.backgroundImage = profile.avatar_url ? `url(${profile.avatar_url})` : 'none';
+    }
+
+    // Mark as read immediately when opening
+    await client.from('messages').update({ is_read: true }).eq('sender_id', userId).eq('receiver_id', currentUser.id);
+    pollMessages(); 
+
+    await loadChatMessages();
+}
+
+function closeChat() {
+    hideModal('chatModal');
+    currentChatUserId = null;
+    if(!document.getElementById('messagesModal').classList.contains('hidden')) loadInbox();
+}
+
+async function loadChatMessages(isSilentRefresh = false) {
+    if (!currentChatUserId) return;
+    const container = document.getElementById('chatMessages');
+    
+    // Check if user has scrolled up; if so, don't force them back down on silent refresh
+    const isScrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 50;
+
+    const { data, error } = await client.from('messages')
+        .select('*')
+        .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${currentChatUserId}),and(sender_id.eq.${currentChatUserId},receiver_id.eq.${currentUser.id})`)
+        .order('created_at', { ascending: true });
+
+    if (error && !isSilentRefresh) return container.innerHTML = '<p style="text-align:center;">Error loading messages.</p>';
+
+    container.innerHTML = '';
+    data.forEach(msg => {
+        const div = document.createElement('div');
+        div.className = `chat-msg ${msg.sender_id === currentUser.id ? 'sent' : 'received'}`;
+        div.innerText = msg.content;
+        container.appendChild(div);
+    });
+
+    if (!isSilentRefresh || isScrolledToBottom) {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+async function sendChatMessage() {
+    if (!currentUser || !currentChatUserId) return;
+    const input = document.getElementById('chatInput');
+    const content = input.value.trim();
+    if (!content) return;
+
+    input.value = ''; 
+    input.style.height = 'auto'; // NEW: Reset the height back to 1 row after sending!
+    
+    // Optimistic UI Append to feel instant
+    const container = document.getElementById('chatMessages');
+    const div = document.createElement('div');
+    div.className = `chat-msg sent`;
+    div.innerText = content;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+
+    const { error } = await client.from('messages').insert([
+        { sender_id: currentUser.id, receiver_id: currentChatUserId, content: content }
+    ]);
+    if (error) alert("Failed to send message: " + error.message);
+}
+
+// --- Chat Input Auto-Expand & Shift+Enter Logic ---
+const chatInputField = document.getElementById('chatInput');
+
+if (chatInputField) {
+    // Handle Enter vs Shift+Enter
+    chatInputField.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault(); // Prevents it from creating a new line
+            sendChatMessage();  // Sends the message instead
+        }
+    });
+
+    // Handle Auto-Expanding Height
+    chatInputField.addEventListener('input', function() {
+        this.style.height = 'auto'; // Reset height to recalculate
+        this.style.height = (this.scrollHeight) + 'px'; // Expand to fit content
+    });
 }
