@@ -599,3 +599,30 @@ button {
     align-self: flex-start;
     border-bottom-left-radius: 4px;
 }
+
+/* --- Play / Pause Indicator Animation --- */
+.play-indicator {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 100px;
+    color: rgba(255, 255, 255, 0.85);
+    pointer-events: none; /* Let taps pass right through to the video */
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+    text-shadow: 0 0 30px rgba(0,0,0,0.8);
+}
+
+/* When the video is paused, fade the triangle in */
+.post.is-paused .play-indicator {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(3);
+}
+
+/* When playing, scale it up slightly before vanishing for a smooth pop effect */
+.post:not(.is-paused) .play-indicator {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(3.9);
+}

@@ -155,13 +155,19 @@ async function updateAuthState(session) {
 initializeApp();
 
 // --- Tab Navigation System ---
+// --- Tab Navigation System ---
 function switchTab(tabId) {
     // 1. Update active styling on icons safely
     document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
     const activeBtn = document.getElementById(`nav-${tabId}`);
     if(activeBtn) activeBtn.classList.add('active');
 
-    // 2. Hide ALL views (including the feed now)
+    // --- FIX 1: Explicitly pause all feed videos when leaving the home tab ---
+    if (tabId !== 'home') {
+        document.querySelectorAll('#feed video').forEach(v => v.pause());
+    }
+
+    // 2. Hide ALL views and Modals
     document.getElementById('feed').classList.add('hidden');
     hideModal('searchModal');
     hideModal('uploadModal');
@@ -169,15 +175,24 @@ function switchTab(tabId) {
     hideModal('authModal');
     hideModal('viewProfileModal');
     hideModal('singlePostModal');
+    hideModal('messagesModal'); 
+    hideModal('chatModal');     
+    currentChatUserId = null;
 
     // 3. Show requested tab
     if (tabId === 'home') {
         document.getElementById('feed').classList.remove('hidden');
-        document.getElementById('topFeedNav').classList.remove('hidden'); // Show top tabs
-        loadFeed();
+        document.getElementById('topFeedNav').classList.remove('hidden'); 
+        
+        // --- FIX 1: Resume playing the video currently visible on the screen ---
+        document.querySelectorAll('#feed .post video').forEach(video => {
+            const rect = video.getBoundingClientRect();
+            if (rect.top >= -window.innerHeight * 0.5 && rect.bottom <= window.innerHeight * 1.5) {
+                video.play().catch(e => console.log("Play blocked by browser:", e)); 
+            }
+        });
     } else {
-        document.getElementById('topFeedNav').classList.add('hidden'); // Hide on other pages
-        // ... rest of your if/else logic ...
+        document.getElementById('topFeedNav').classList.add('hidden'); 
     
         if (tabId === 'search') {
             showModal('searchModal');
@@ -189,6 +204,13 @@ function switchTab(tabId) {
         else if (tabId === 'profile') {
             if (!currentUser) showModal('authModal');
             else showModal('profileModal');
+        }
+        else if (tabId === 'messages') {
+            if (!currentUser) showModal('authModal');
+            else {
+                showModal('messagesModal');
+                loadInbox();
+            }
         }
     }
 }
@@ -671,12 +693,16 @@ function createPostElement(post) {
     const authorName = post.profiles?.username || 'Anonymous';
     const avatarUrl = post.profiles?.avatar_url || '';
     
-    // 1. Removed the native ondblclick from the media elements
     let mediaHtml = post.media_type === 'video' 
         ? `<video src="${post.media_url}" loop playsinline></video>`
         : `<img src="${post.media_url}" alt="Post Image">`;
+        
+    // --- FIX 2: Create the Play Indicator HTML ---
+    let playIndicatorHtml = post.media_type === 'video'
+        ? `<div class="play-indicator material-icons">play_arrow</div>`
+        : ``;
+
     let followBtnHtml = '';
-    // 2. FIXED BUG: post.user_id !== post.user_id changed to currentUser.id !== post.user_id
     if (currentUser && currentUser.id !== post.user_id) {
         const isFollowing = myFollowings.has(post.user_id);
         followBtnHtml = `<button class="feed-follow-btn ${isFollowing ? 'following' : ''}" onclick="toggleFollow(event, '${post.user_id}')">${isFollowing ? 'Following' : 'Follow'}</button>`;
@@ -695,7 +721,7 @@ function createPostElement(post) {
     postDiv.innerHTML = `
         ${optionsMenuHtml}
         ${mediaHtml}
-        <div class="post-overlay">
+        ${playIndicatorHtml} <div class="post-overlay">
             <div class="post-info">
                 <div class="post-author-row" onclick="viewProfile('${post.user_id}')">
                     <div class="post-avatar" style="background-image: url('${avatarUrl}')"></div>
@@ -718,57 +744,50 @@ function createPostElement(post) {
         </div>
     `;
     
-// --- 3. NEW CUSTOM TAP LOGIC (Single = Play/Pause, Double = Like) ---
+    // Tap Logic
     let clickTimer = null;
-    
     postDiv.addEventListener('click', (e) => {
-        // Ignore clicks on specific UI buttons
         if (e.target.closest('.post-actions') || e.target.closest('.post-info') || e.target.closest('.more-options-btn')) {
             return; 
         }
 
         const video = postDiv.querySelector('video');
 
-        // If no timer exists, this is the first tap
         if (clickTimer === null) {
             clickTimer = setTimeout(() => {
-                // Timer finished! It was just a single tap.
                 clickTimer = null;
-                
-                // --- SINGLE TAP: Play / Pause ---
+                // Single Tap
                 if (video) {
-                    if (video.paused) {
-                        video.play().catch(err => console.log("Play prevented by browser:", err));
-                    } else {
-                        video.pause();
-                    }
+                    if (video.paused) video.play().catch(err => console.log(err));
+                    else video.pause();
                 }
-            }, 250); // Wait 250ms to see if a second tap happens
-        } 
-        else {
-            // A timer is running, meaning this is the SECOND tap!
+            }, 250); 
+        } else {
+            // Double Tap
             clearTimeout(clickTimer);
             clickTimer = null;
-            
-            // --- DOUBLE TAP: Like ---
             window.handleDoubleTap(post.id);
             e.preventDefault(); 
             
-            // Heart Animation Logic
             const heart = document.createElement('span');
             heart.classList.add('material-icons', 'tap-heart');
             heart.innerText = 'favorite'; 
             postDiv.appendChild(heart);
 
-            setTimeout(() => {
-                heart.remove();
-            }, 800);
+            setTimeout(() => heart.remove(), 800);
         }
     });
 
-    // Attach the video element to the playback observer
     const videoElement = postDiv.querySelector('video');
     if (videoElement) {
+        
+        // --- FIX 2: Bind native video events to update the UI perfectly ---
+        videoElement.addEventListener('pause', () => { postDiv.classList.add('is-paused'); });
+        videoElement.addEventListener('play', () => { postDiv.classList.remove('is-paused'); });
+        
+        // If the browser blocks auto-play initially, make sure the icon shows
+        if (videoElement.paused) postDiv.classList.add('is-paused');
+
         videoObserver.observe(videoElement);
     }
 
