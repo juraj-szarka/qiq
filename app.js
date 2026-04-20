@@ -11,33 +11,44 @@ let currentViewProfileId = null;
 let currentFeedMode = 'foryou'; // Can be 'foryou' or 'following'
 
 // --- Algorithm: View Tracking System ---
+// --- Algorithm: View Tracking System ---
 const viewedPosts = new Set();
+const viewTimers = new Map(); // Tracks how long a user stays on a post
+
 const feedObserver = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
+        const postId = entry.target.id.replace('post-container-', '');
+        
         if (entry.isIntersecting) {
-            const postId = entry.target.id.replace('post-container-', '');
-            
-            // Prevent spamming the DB by checking our local set first
-            if (!viewedPosts.has(postId)) {
-                viewedPosts.add(postId);
+            // Start a 1-second timer every time the post comes on screen
+            const timer = setTimeout(() => {
                 
-                // 1. Optimistically update the UI view count immediately
+                // 1. Optimistic UI Update (Changes the number on screen instantly)
                 const viewCountElement = document.getElementById(`view-count-${postId}`);
                 if (viewCountElement) {
                     const currentViews = parseInt(viewCountElement.innerText) || 0;
                     viewCountElement.innerText = currentViews + 1;
                 }
                 
-                // 2. Call the SQL function in the background
+                // 2. Send to Database in the background
                 const userIdToPass = currentUser ? currentUser.id : null;
                 client.rpc('record_post_view', { p_user_id: userIdToPass, p_post_id: postId })
                     .then(({ error }) => {
-                        if (error) console.error("Error recording view in DB:", error.message);
+                        if (error) console.error("DB View Error:", error.message);
                     });
+                
+            }, 1000); // 1000ms = 1 second
+            
+            viewTimers.set(postId, timer);
+        } else {
+            // If they scroll away before 1 second, cancel the timer
+            if (viewTimers.has(postId)) {
+                clearTimeout(viewTimers.get(postId));
+                viewTimers.delete(postId);
             }
         }
     });
-}, { threshold: 0.6 }); // Triggers when 60% of the video is visible
+}, { threshold: 0.6 }); // Requires 60% of the post to be visible
 
 function switchFeedTab(mode) {
     currentFeedMode = mode;
@@ -638,7 +649,7 @@ function createPostElement(post) {
         lastTap = currentTime;
     });
   
-    feedObserver.observe(postDiv);
+
     return postDiv;
 }
 
@@ -711,16 +722,20 @@ async function loadFeed() {
     }
 
     feedContainer.innerHTML = ''; // Clear loading text
+    feedContainer.scrollTop = 0;  // NEW: Reset scroll so the first item registers accurately
 
     // --- 3. Render the Feed ---
     
     // Render Unseen videos first
-    unseenPosts.forEach(post => feedContainer.appendChild(createPostElement(post)));
+    unseenPosts.forEach(post => {
+        const postElement = createPostElement(post);
+        feedContainer.appendChild(postElement);
+        feedObserver.observe(postElement); // NEW: Observe AFTER it is in the DOM
+    });
 
     // If they have seen videos, show the "Caught Up" divider, then show the seen videos
     if (currentUser && seenPosts.length > 0) {
         
-        // Only show the divider if there were actually *some* new videos before it.
         if (unseenPosts.length > 0) {
             const divider = document.createElement('div');
             divider.className = 'caught-up-divider';
@@ -733,10 +748,10 @@ async function loadFeed() {
         }
 
         // Render the already viewed videos below
-        seenPosts.forEach(post => feedContainer.appendChild(createPostElement(post)));
-    }
-
-    if (unseenPosts.length === 0 && seenPosts.length === 0) {
-        feedContainer.innerHTML = '<div style="color:white; text-align:center; padding-top:50vh;">No posts available yet.</div>';
+        seenPosts.forEach(post => {
+            const postElement = createPostElement(post);
+            feedContainer.appendChild(postElement);
+            feedObserver.observe(postElement); // NEW: Observe AFTER it is in the DOM
+        });
     }
 }
