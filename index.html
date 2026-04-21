@@ -121,10 +121,15 @@
         </div>
 
         <div id="uploadModal" class="modal full-modal hidden">
-            <div class="modal-content full-screen-content" style="justify-content: center; align-items: center;">
+            <div class="modal-content full-screen-content" style="justify-content: flex-start; align-items: center; padding-top: 40px;">
                 <h2>Upload Media</h2>
-                <p style="margin-bottom: 15px; color: #aaa;">Images or Videos</p>
-                <input type="file" id="mediaInput" accept="video/mp4,video/quicktime,image/jpeg,image/png" style="width: 80%; margin-bottom: 10px;">
+                <p style="margin-bottom: 10px; color: #aaa; text-align: center;">Max 10 photos (Videos must be single)</p>
+                
+                <button onclick="document.getElementById('mediaInput').click()" style="width: 80%; margin-bottom: 15px; background: #333; border: 1px dashed #777;">+ Select Files</button>
+                <input type="file" id="mediaInput" accept="video/mp4,video/quicktime,image/jpeg,image/png" multiple style="display: none;" onchange="handleFileSelection(event)">
+                
+                <div id="stagedFilesContainer" style="width: 80%; display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 15px; align-items: center;"></div>
+                
                 <textarea id="postDescription" placeholder="Write a caption..." style="width: 80%; margin-bottom: 10px;"></textarea>
                 <button onclick="uploadMedia()" style="width: 80%;">Post</button>
                 <p id="uploadStatus" style="margin-top: 10px;"></p>

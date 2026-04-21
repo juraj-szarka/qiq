@@ -577,42 +577,125 @@ function updateProfileFollowButton(userId) {
     }
 }
 
-// --- Upload Media ---
-async function uploadMedia() {
-    const fileInput = document.getElementById('mediaInput');
-    const file = fileInput.files[0];
-    if (!file) return alert("Select a file");
+// --- File Staging System ---
+let stagedFiles = [];
 
-    const statusText = document.getElementById('uploadStatus');
-    statusText.innerText = "Processing upload..."; 
+function handleFileSelection(event) {
+    const files = Array.from(event.target.files);
+    
+    // 1. Enforce limits
+    if (stagedFiles.length + files.length > 10) {
+        alert("You can only upload a maximum of 10 files.");
+        const allowed = 10 - stagedFiles.length;
+        stagedFiles.push(...files.slice(0, allowed));
+    } else {
+        stagedFiles.push(...files);
+    }
+    
+    // 2. Prevent mixing video and photos
+    const hasVideo = stagedFiles.some(f => f.type.startsWith('video/'));
+    if (hasVideo && stagedFiles.length > 1) {
+        alert("Videos must be uploaded one at a time. Clearing selection.");
+        stagedFiles = [];
+    }
 
-    const type = file.type.startsWith('video/') ? 'video' : 'image';
-    await processUpload(file, statusText, type);
+    event.target.value = ''; // Clear input so the same file can be selected again if needed
+    renderStagedFiles();
 }
 
-async function processUpload(file, statusText, type) {
-    const fileName = `${Date.now()}_${file.name}`;
-    const description = document.getElementById('postDescription').value;
+function removeStagedFile(index) {
+    stagedFiles.splice(index, 1);
+    renderStagedFiles();
+}
 
-    // ALGORITHM FEATURE: Extract hashtags from the caption
+function renderStagedFiles() {
+    const container = document.getElementById('stagedFilesContainer');
+    container.innerHTML = '';
+    
+    if (stagedFiles.length === 0) return;
+
+    stagedFiles.forEach((file, index) => {
+        const url = URL.createObjectURL(file);
+        const isVideo = file.type.startsWith('video/');
+        
+        const wrapper = document.createElement('div');
+        wrapper.className = 'staged-file';
+        
+        const mediaHtml = isVideo 
+            ? `<video src="${url}" muted></video>` 
+            : `<img src="${url}">`;
+            
+        wrapper.innerHTML = `
+            ${mediaHtml}
+            <button class="staged-file-remove" onclick="removeStagedFile(${index})">X</button>
+        `;
+        container.appendChild(wrapper);
+    });
+
+    // Add a "Clear All" button if there's more than one file
+    if (stagedFiles.length > 1) {
+        const clearBtn = document.createElement('button');
+        clearBtn.innerText = "Clear All";
+        clearBtn.style.padding = "5px 10px";
+        clearBtn.style.fontSize = "12px";
+        clearBtn.style.background = "#555";
+        clearBtn.style.width = "auto";
+        clearBtn.onclick = () => {
+            stagedFiles = [];
+            renderStagedFiles();
+        };
+        container.appendChild(clearBtn);
+    }
+}
+
+
+// --- Upload Media ---
+async function uploadMedia() {
+    if (stagedFiles.length === 0) return alert("Select at least one file");
+
+    const statusText = document.getElementById('uploadStatus');
+    statusText.innerText = `Processing ${stagedFiles.length} file(s)...`; 
+
+    const type = stagedFiles[0].type.startsWith('video/') ? 'video' : (stagedFiles.length > 1 ? 'carousel' : 'image');
+    
+    // Pass the stagedFiles array into processUpload
+    await processUpload(stagedFiles, statusText, type);
+}
+
+async function processUpload(files, statusText, type) {
+    const description = document.getElementById('postDescription').value;
     const hashtags = description.match(/#[\w]+/g) || [];
     const tagsArray = hashtags.map(t => t.replace('#', '').toLowerCase());
 
-    const { error: storageError } = await client.storage.from('media').upload(fileName, file);
-    
-    if (storageError) {
-        return statusText.innerText = "Upload Error: " + storageError.message;
+    let uploadedUrls = [];
+
+    // Upload all files
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        statusText.innerText = `Uploading ${i + 1} of ${files.length}...`;
+        
+        const fileName = `${Date.now()}_${file.name}`;
+        const { error: storageError } = await client.storage.from('media').upload(fileName, file);
+        
+        if (storageError) {
+            return statusText.innerText = "Upload Error: " + storageError.message;
+        }
+
+        const { data: publicUrlData } = client.storage.from('media').getPublicUrl(fileName);
+        uploadedUrls.push(publicUrlData.publicUrl);
     }
 
-    const { data: publicUrlData } = client.storage.from('media').getPublicUrl(fileName);
+    statusText.innerText = "Saving to database...";
 
+    // Insert to DB (Saving the first image to media_url for backwards compatibility, and the full array to media_urls)
     const { error: dbError } = await client.from('posts').insert([
         { 
             user_id: currentUser.id, 
-            media_url: publicUrlData.publicUrl, 
+            media_url: uploadedUrls[0], 
+            media_urls: uploadedUrls, 
             media_type: type, 
             description: description,
-            tags: tagsArray // Save the tags to the database
+            tags: tagsArray
         }
     ]);
 
@@ -622,6 +705,11 @@ async function processUpload(file, statusText, type) {
         statusText.innerText = "Uploaded successfully!";
         document.getElementById('postDescription').value = ""; 
         document.getElementById('mediaInput').value = ""; 
+
+        // NEW: Clear the staging array and UI
+        stagedFiles = [];
+        renderStagedFiles();
+        
         setTimeout(() => {
             statusText.innerText = "";
             switchTab('home'); 
@@ -702,14 +790,43 @@ function createPostElement(post) {
     const authorName = post.profiles?.username || 'Anonymous';
     const avatarUrl = post.profiles?.avatar_url || '';
     
-    let mediaHtml = post.media_type === 'video' 
-        ? `<video src="${post.media_url}" loop playsinline></video>`
-        : `<img src="${post.media_url}" alt="Post Image">`;
+    let mediaHtml = '';
+    let playIndicatorHtml = '';
+
+    // If it's a carousel OR an image post that happens to have an array of URLs
+    if (post.media_type === 'carousel' || (post.media_urls && post.media_urls.length > 1)) {
+        const urls = post.media_urls || [post.media_url];
         
-    // --- FIX 2: Create the Play Indicator HTML ---
-    let playIndicatorHtml = post.media_type === 'video'
-        ? `<div class="play-indicator material-icons">play_arrow</div>`
-        : ``;
+        let itemsHtml = urls.map((url, index) => `
+            <div class="carousel-item" id="item-${post.id}-${index}">
+                <img src="${url}" alt="Carousel Image ${index + 1}">
+            </div>
+        `).join('');
+
+        let dotsHtml = urls.map((_, index) => `
+            <div class="carousel-dot ${index === 0 ? 'active' : ''}" id="dot-${post.id}-${index}"></div>
+        `).join('');
+
+        mediaHtml = `
+            <button class="carousel-btn left material-icons" onclick="scrollCarousel(event, '${post.id}', -1)">chevron_left</button>
+            <div class="carousel-container" id="carousel-${post.id}" onscroll="updateCarouselDots('${post.id}', ${urls.length})">
+                ${itemsHtml}
+            </div>
+            <button class="carousel-btn right material-icons" onclick="scrollCarousel(event, '${post.id}', 1)">chevron_right</button>
+            <div class="carousel-dots">
+                ${dotsHtml}
+            </div>
+        `;
+    } 
+    // If it's a video
+    else if (post.media_type === 'video') {
+        mediaHtml = `<video src="${post.media_url}" loop playsinline></video>`;
+        playIndicatorHtml = `<div class="play-indicator material-icons">play_arrow</div>`;
+    } 
+    // If it's a single image
+    else {
+        mediaHtml = `<img src="${post.media_url}" alt="Post Image">`;
+    }
 
     let followBtnHtml = '';
     if (currentUser && currentUser.id !== post.user_id) {
@@ -802,6 +919,38 @@ function createPostElement(post) {
 
     return postDiv;
 }
+
+// --- Carousel Logic ---
+window.scrollCarousel = function(event, postId, direction) {
+    event.stopPropagation(); // Prevent the post tap/double-tap logic from triggering
+    const container = document.getElementById(`carousel-${postId}`);
+    if (!container) return;
+    
+    const scrollAmount = container.clientWidth;
+    container.scrollBy({ left: direction * scrollAmount, behavior: 'smooth' });
+};
+
+window.updateCarouselDots = function(postId, totalItems) {
+    const container = document.getElementById(`carousel-${postId}`);
+    if (!container) return;
+    
+    // Calculate which image is currently in view based on scroll position
+    const scrollLeft = container.scrollLeft;
+    const itemWidth = container.clientWidth;
+    const currentIndex = Math.round(scrollLeft / itemWidth);
+
+    // Update the dots classes
+    for (let i = 0; i < totalItems; i++) {
+        const dot = document.getElementById(`dot-${postId}-${i}`);
+        if (dot) {
+            if (i === currentIndex) {
+                dot.classList.add('active');
+            } else {
+                dot.classList.remove('active');
+            }
+        }
+    }
+};
 
 function openSinglePost(post) {
     // Pause all background feed videos
