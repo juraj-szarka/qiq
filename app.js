@@ -1317,11 +1317,61 @@ function closeChat() {
     if(!document.getElementById('messagesModal').classList.contains('hidden')) loadInbox();
 }
 
+// --- DM File & Reply State Variables ---
+let replyingToMsgId = null;
+let chatAttachedFile = null;
+
+// --- Helper Functions for the new features ---
+function initiateReply(msgId, textSnippet) {
+    replyingToMsgId = msgId;
+    const previewArea = document.getElementById('replyPreviewArea');
+    const previewText = document.getElementById('replyPreviewText');
+    
+    previewText.innerText = `Replying to: ${textSnippet}`;
+    previewArea.classList.remove('hidden');
+    previewArea.style.display = 'flex'; // Override hidden
+    document.getElementById('chatInput').focus();
+}
+
+function cancelReply() {
+    replyingToMsgId = null;
+    document.getElementById('replyPreviewArea').style.display = 'none';
+}
+
+function handleChatFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // 10MB limit (10 * 1024 * 1024 bytes)
+    if (file.size > 10485760) {
+        alert("File must be smaller than 10MB.");
+        event.target.value = ''; // clear
+        return;
+    }
+
+    chatAttachedFile = file;
+    document.getElementById('chatFileName').innerText = file.name;
+    document.getElementById('chatFilePreviewArea').classList.remove('hidden');
+    document.getElementById('chatFilePreviewArea').style.display = 'flex';
+}
+
+function cancelChatFile() {
+    chatAttachedFile = null;
+    document.getElementById('chatFileInput').value = '';
+    document.getElementById('chatFilePreviewArea').style.display = 'none';
+}
+
+async function toggleChatLike(msgId, isCurrentlyLiked) {
+    const newStatus = !isCurrentlyLiked;
+    // Optimistic UI could be added here, but silent refresh is safer for sync
+    await client.from('messages').update({ is_liked: newStatus }).eq('id', msgId);
+    loadChatMessages(true); // Silent refresh
+}
+
+// --- REPLACED: loadChatMessages ---
 async function loadChatMessages(isSilentRefresh = false) {
     if (!currentChatUserId) return;
     const container = document.getElementById('chatMessages');
-    
-    // Check if user has scrolled up; if so, don't force them back down on silent refresh
     const isScrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 50;
 
     const { data, error } = await client.from('messages')
@@ -1332,11 +1382,82 @@ async function loadChatMessages(isSilentRefresh = false) {
     if (error && !isSilentRefresh) return container.innerHTML = '<p style="text-align:center;">Error loading messages.</p>';
 
     container.innerHTML = '';
+    
+    // Create a dictionary of messages so we can look up reply text quickly
+    const messageMap = {};
+    if(data) data.forEach(m => messageMap[m.id] = m);
+
     data.forEach(msg => {
-        const div = document.createElement('div');
-        div.className = `chat-msg ${msg.sender_id === currentUser.id ? 'sent' : 'received'}`;
-        div.innerText = msg.content;
-        container.appendChild(div);
+        const isMe = msg.sender_id === currentUser.id;
+        
+        // Wrapper for alignment
+        const wrapper = document.createElement('div');
+        wrapper.className = `chat-msg-wrapper ${isMe ? 'sent' : 'received'}`;
+
+        // The Message Bubble itself
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `chat-msg ${isMe ? 'sent' : 'received'}`;
+        
+        // 1. Render Reply Reference (if exists)
+        if (msg.reply_to_id && messageMap[msg.reply_to_id]) {
+            const originalMsg = messageMap[msg.reply_to_id];
+            let refText = originalMsg.content || (originalMsg.file_url ? 'Attachment' : 'Message');
+            // Truncate if too long
+            if (refText.length > 30) refText = refText.substring(0, 30) + '...';
+            
+            msgDiv.innerHTML += `<div class="chat-msg-reply-ref">Reply to: ${refText}</div>`;
+        }
+
+        // 2. Render Text Content
+        if (msg.content) {
+            const textSpan = document.createElement('span');
+            textSpan.innerText = msg.content;
+            msgDiv.appendChild(textSpan);
+        }
+
+        // 3. Render Attached File (if exists)
+        if (msg.file_url) {
+            const isVideo = msg.file_url.match(/\.(mp4|webm|mov|ogg)$/i);
+            if (isVideo) {
+                msgDiv.innerHTML += `<br><video src="${msg.file_url}" class="chat-file-preview" controls></video>`;
+            } else {
+                msgDiv.innerHTML += `<br><img src="${msg.file_url}" class="chat-file-preview">`;
+            }
+        }
+
+        // 4. Render Like Icon
+        if (msg.is_liked) {
+            msgDiv.innerHTML += `<span class="material-icons chat-msg-liked-heart">favorite</span>`;
+        }
+
+        // 5. Action Buttons (Reply / Like)
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'chat-actions';
+        
+        // Escape quotes to prevent breaking HTML attributes
+        const safeContent = (msg.content || 'attachment').replace(/'/g, "\\'");
+        
+        actionsDiv.innerHTML = `
+            <span class="material-icons chat-action-btn" onclick="initiateReply('${msg.id}', '${safeContent}')">reply</span>
+            <span class="material-icons chat-action-btn" onclick="toggleChatLike('${msg.id}', ${msg.is_liked || false})">${msg.is_liked ? 'favorite' : 'favorite_border'}</span>
+        `;
+
+        // Add Double-Tap logic directly to the bubble
+        let clickTimer = null;
+        msgDiv.addEventListener('click', (e) => {
+            if (clickTimer === null) {
+                clickTimer = setTimeout(() => { clickTimer = null; }, 250); 
+            } else {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+                toggleChatLike(msg.id, msg.is_liked);
+                e.preventDefault(); 
+            }
+        });
+
+        wrapper.appendChild(msgDiv);
+        wrapper.appendChild(actionsDiv);
+        container.appendChild(wrapper);
     });
 
     if (!isSilentRefresh || isScrolledToBottom) {
@@ -1344,27 +1465,62 @@ async function loadChatMessages(isSilentRefresh = false) {
     }
 }
 
+// --- REPLACED: sendChatMessage ---
 async function sendChatMessage() {
     if (!currentUser || !currentChatUserId) return;
+    
     const input = document.getElementById('chatInput');
     const content = input.value.trim();
-    if (!content) return;
-
-    input.value = ''; 
-    input.style.height = 'auto'; // NEW: Reset the height back to 1 row after sending!
     
-    // Optimistic UI Append to feel instant
-    const container = document.getElementById('chatMessages');
-    const div = document.createElement('div');
-    div.className = `chat-msg sent`;
-    div.innerText = content;
-    container.appendChild(div);
-    container.scrollTop = container.scrollHeight;
+    // Require either text or a file to be present
+    if (!content && !chatAttachedFile) return;
 
-    const { error } = await client.from('messages').insert([
-        { sender_id: currentUser.id, receiver_id: currentChatUserId, content: content }
-    ]);
-    if (error) alert("Failed to send message: " + error.message);
+    input.disabled = true; // Prevent spam clicking
+
+    let finalFileUrl = null;
+
+    // Process file upload first if one is attached
+    if (chatAttachedFile) {
+        document.getElementById('chatFileName').innerText = "Uploading...";
+        const fileName = `${currentUser.id}_${Date.now()}_${chatAttachedFile.name}`;
+        
+        const { error: uploadError } = await client.storage.from('chat_files').upload(fileName, chatAttachedFile);
+        
+        if (uploadError) {
+            alert("File upload failed: " + uploadError.message);
+            input.disabled = false;
+            document.getElementById('chatFileName').innerText = chatAttachedFile.name; // reset
+            return;
+        }
+
+        const { data } = client.storage.from('chat_files').getPublicUrl(fileName);
+        finalFileUrl = data.publicUrl;
+    }
+
+    // Build the database row payload
+    const messagePayload = { 
+        sender_id: currentUser.id, 
+        receiver_id: currentChatUserId, 
+        content: content 
+    };
+
+    if (replyingToMsgId) messagePayload.reply_to_id = replyingToMsgId;
+    if (finalFileUrl) messagePayload.file_url = finalFileUrl;
+
+    const { error } = await client.from('messages').insert([messagePayload]);
+    
+    input.disabled = false;
+    
+    if (error) {
+        alert("Failed to send message: " + error.message);
+    } else {
+        // Clear everything out on success
+        input.value = ''; 
+        input.style.height = 'auto';
+        cancelReply();
+        cancelChatFile();
+        loadChatMessages(true); // reload to show the new message
+    }
 }
 
 // --- Chat Input Auto-Expand & Shift+Enter Logic ---

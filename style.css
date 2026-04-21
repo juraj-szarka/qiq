@@ -738,3 +738,87 @@ button {
     align-items: center;
     padding: 0;
 }
+
+/* --- DM Enhancements --- */
+.chat-msg-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+    width: 100%;
+}
+
+.chat-msg-wrapper.sent {
+    flex-direction: row-reverse;
+}
+
+.chat-msg {
+    position: relative;
+    max-width: 75%;
+    padding: 10px 14px;
+    border-radius: 18px;
+    font-size: 14px;
+    line-height: 1.4;
+    word-break: break-word;
+    user-select: none; /* Prevents text selection on double-tap */
+}
+
+/* Like Heart Indicator */
+.chat-msg-liked-heart {
+    position: absolute;
+    bottom: -10px;
+    font-size: 16px;
+    color: #ff0050;
+    background: #222;
+    border-radius: 50%;
+    padding: 3px;
+    border: 2px solid #000;
+}
+.chat-msg-wrapper.sent .chat-msg-liked-heart { left: -5px; }
+.chat-msg-wrapper.received .chat-msg-liked-heart { right: -5px; }
+
+/* Reply Context Box inside bubble */
+.chat-msg-reply-ref {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.7);
+    background: rgba(0, 0, 0, 0.2);
+    padding: 6px;
+    border-radius: 8px;
+    margin-bottom: 6px;
+    border-left: 2px solid rgba(255, 255, 255, 0.5);
+    display: block;
+}
+
+/* File Previews in Chat */
+.chat-file-preview {
+    max-width: 200px;
+    max-height: 250px;
+    border-radius: 8px;
+    margin-top: 5px;
+    display: block;
+    object-fit: cover;
+}
+
+/* Action Buttons (Reply/Like) next to message */
+.chat-actions {
+    display: flex;
+    gap: 5px;
+    opacity: 0; /* Hidden by default */
+    transition: opacity 0.2s;
+}
+
+/* Show actions on hover (Desktop) or when tapping around */
+.chat-msg-wrapper:hover .chat-actions,
+.chat-msg-wrapper:active .chat-actions {
+    opacity: 1;
+}
+
+.chat-action-btn {
+    font-size: 18px;
+    color: #777;
+    cursor: pointer;
+    background: #222;
+    padding: 6px;
+    border-radius: 50%;
+}
+.chat-action-btn:hover { background: #444; color: #fff; }
