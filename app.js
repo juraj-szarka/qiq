@@ -423,11 +423,12 @@ async function signOut() {
 
 // --- Profile Management ---
 async function loadUserProfile() {
-    const { data, error } = await client.from('profiles').select('*').eq('id', currentUser.id).maybeSingle();
+    const { data, error } = await client.from('profiles').select('*').eq('id', currentUser.id).maybeSingle();    
     
     if (data) {
         userProfile = data;
         document.getElementById('username').value = data.username || '';
+        document.getElementById('displayName').value = data.display_name || ''; // <-- ADD THIS
         document.getElementById('bio').value = data.bio || '';
         if (data.avatar_url) {
             document.getElementById('avatarPreview').style.backgroundImage = `url(${data.avatar_url})`;
@@ -473,6 +474,7 @@ async function saveProfile() {
     statusText.innerText = "Saving...";
     
     const username = document.getElementById('username').value;
+    const displayName = document.getElementById('displayName').value; // <-- ADD THIS
     const bio = document.getElementById('bio').value;
     const avatarFile = document.getElementById('avatarInput').files[0];
     let avatar_url = userProfile?.avatar_url || null;
@@ -486,8 +488,13 @@ async function saveProfile() {
         }
     }
 
+    // Add display_name to the database upsert 
     const { error } = await client.from('profiles').upsert({
-        id: currentUser.id, username, bio, avatar_url
+        id: currentUser.id, 
+        username, 
+        display_name: displayName, // <-- ADD THIS
+        bio, 
+        avatar_url
     });
 
     if (error) statusText.innerText = "Error saving profile.";
@@ -508,13 +515,15 @@ async function viewProfile(userId) {
     showModal('viewProfileModal');
     
     document.getElementById('viewUsername').innerText = "Loading...";
+    document.getElementById('viewDisplayName').innerText = "Loading..."; // <-- ADD THIS
     document.getElementById('viewBio').innerText = "";
     document.getElementById('viewAvatar').style.backgroundImage = "none";
     const grid = document.getElementById('viewProfilePosts');
-    grid.innerHTML = ""; 
+    grid.innerHTML = "";
 
     const { data: profile } = await client.from('profiles').select('*').eq('id', userId).single();
     if (profile) {
+        document.getElementById('viewDisplayName').innerText = profile.display_name || "Anonymous"; // <-- ADD THIS
         document.getElementById('viewUsername').innerText = "@" + (profile.username || "Anonymous");
         document.getElementById('viewBio').innerText = profile.bio || "";
         if (profile.avatar_url) {
