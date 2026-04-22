@@ -109,6 +109,15 @@ function switchFeedTab(mode) {
     loadFeed(); // Reload the feed with the new mode
 }
 
+function getStringColor(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+    return '#' + '00000'.substring(0, 6 - c.length) + c;
+}
+
 // --- App Initialization ---
 async function initializeApp() {
     const { data: { session } } = await client.auth.getSession();
@@ -866,6 +875,7 @@ function createPostElement(post) {
 
                 <button class="view-btn material-icons" style="margin-top: 15px;">visibility</button>
                 <span id="view-count-${post.id}" class="like-count">${post.views || 0}</span>
+                <span class="material-icons action-btn" onclick="openShareModal('${post.id}')">send</span>
             </div>
         </div>
     `;
@@ -951,6 +961,35 @@ window.updateCarouselDots = function(postId, totalItems) {
         }
     }
 };
+
+// --- NEW: Fetch and open a specific post by ID ---
+async function viewPost(postId) {
+    const container = document.getElementById('singlePostContainer');
+    container.innerHTML = '<p style="text-align:center; color:white; padding-top: 50px;">Loading post...</p>';
+    showModal('singlePostModal');
+
+    // Fetch the full post with all the joins needed to render it
+    const { data: post, error } = await client.from('posts')
+        .select(`*, profiles(username, avatar_url), likes(user_id), comments(id)`)
+        .eq('id', postId)
+        .single();
+
+    if (error || !post) {
+        container.innerHTML = '<p style="text-align:center; color:white; padding-top: 50px;">Post not found or deleted.</p>';
+        return;
+    }
+
+    // Now that we have the full post, clear the loading text and use your existing render function
+    container.innerHTML = "";
+    const postElement = createPostElement(post);
+    container.appendChild(postElement);
+    
+    // Auto-play video if applicable
+    const video = postElement.querySelector('video');
+    if (video) {
+        setTimeout(() => video.play().catch(e => console.log(e)), 100);
+    }
+}
 
 function openSinglePost(post) {
     // Pause all background feed videos
@@ -1269,6 +1308,15 @@ function closeCreateGroupModal() {
     document.getElementById('newGroupName').value = '';
 }
 
+function previewGroupAvatar(event) {
+    const file = event.target.files[0];
+    if (file) {
+        document.getElementById('groupAvatarPreview').src = URL.createObjectURL(file);
+        document.getElementById('groupAvatarPreview').classList.remove('hidden');
+        document.querySelector('label[for="newGroupAvatar"]').classList.add('hidden');
+    }
+}
+
 async function createGroupChat() {
     const name = document.getElementById('newGroupName').value.trim();
     if (!name) return alert("Please enter a group name.");
@@ -1278,14 +1326,29 @@ async function createGroupChat() {
 
     if (selectedUserIds.length === 0) return alert("Select at least one member.");
 
+    let finalAvatarUrl = null;
+    const avatarFile = document.getElementById('newGroupAvatar').files[0];
+
+    // Upload Avatar if selected
+    if (avatarFile) {
+        const fileName = `group_${Date.now()}_${avatarFile.name}`;
+        const { data: uploadData, error: uploadError } = await client.storage
+            .from('group_avatars')
+            .upload(fileName, avatarFile);
+            
+        if (!uploadError) {
+            finalAvatarUrl = client.storage.from('group_avatars').getPublicUrl(fileName).data.publicUrl;
+        }
+    }
+
     // 1. Create Group
     const { data: group, error: groupError } = await client.from('group_chats')
-        .insert([{ name: name, created_by: currentUser.id }])
+        .insert([{ name: name, created_by: currentUser.id, avatar_url: finalAvatarUrl }])
         .select().single();
 
     if (groupError) return alert("Error creating group: " + groupError.message);
 
-    // 2. Add Members (Include creator)
+    // 2. Add Members
     selectedUserIds.push(currentUser.id);
     const membersData = selectedUserIds.map(id => ({ group_id: group.id, user_id: id }));
     
@@ -1456,35 +1519,56 @@ function cancelChatFile() {
     document.getElementById('chatFilePreviewArea').style.display = 'none';
 }
 
-async function toggleChatLike(msgId, isCurrentlyLiked) {
-    await client.from('messages').update({ is_liked: !isCurrentlyLiked }).eq('id', msgId);
+async function toggleChatLike(msgId, currentLikedArray) {
+    let newLikedBy = [...(currentLikedArray || [])];
+    
+    if (newLikedBy.includes(currentUser.id)) {
+        newLikedBy = newLikedBy.filter(id => id !== currentUser.id); // Unlike
+    } else {
+        newLikedBy.push(currentUser.id); // Like
+    }
+
+    await client.from('messages').update({ liked_by: newLikedBy }).eq('id', msgId);
     loadChatMessages(true); 
 }
 
+// --- UPDATED: Load Messages with Names, Time, & Ticks ---
 // --- UPDATED: Load Messages with Names, Time, & Ticks ---
 async function loadChatMessages(isSilentRefresh = false) {
     if (!currentChatUserId && !currentChatGroupId) return;
     const container = document.getElementById('chatMessages');
     const isScrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 50;
 
-    let query = client.from('messages').select('*, sender:profiles!messages_sender_id_fkey(username)');
+    // FIX 1: Changed 'content' to 'description' and 'image_url' to 'media_url'
+// Update this line to include media_type
+    let query = client.from('messages').select(`
+        *, 
+        sender:profiles!messages_sender_id_fkey(username),
+        post:posts(id, description, media_url, media_type, profiles(username))
+    `);
     
-    if (currentChatGroupId) {
-        query = query.eq('group_id', currentChatGroupId);
-    } else {
-        query = query.is('group_id', null).or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${currentChatUserId}),and(sender_id.eq.${currentChatUserId},receiver_id.eq.${currentUser.id})`);
-    }
+    if (currentChatGroupId) query = query.eq('group_id', currentChatGroupId);
+    else query = query.is('group_id', null).or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${currentChatUserId}),and(sender_id.eq.${currentChatUserId},receiver_id.eq.${currentUser.id})`);
 
     const { data, error } = await query.order('created_at', { ascending: true });
 
-    if (error && !isSilentRefresh) return container.innerHTML = '<p style="text-align:center;">Error loading messages.</p>';
+    // FIX 2: Stop the function entirely if there is an error so data.forEach doesn't crash
+    if (error) {
+        console.error("Message load error:", error);
+        if (!isSilentRefresh) container.innerHTML = '<p style="text-align:center;">Error loading messages.</p>';
+        return; 
+    }
+
+    if (!data) return; // Extra safety net
 
     container.innerHTML = '';
     const messageMap = {};
-    if(data) data.forEach(m => messageMap[m.id] = m);
+    data.forEach(m => messageMap[m.id] = m);
 
     data.forEach(msg => {
         const isMe = msg.sender_id === currentUser.id;
+        const likedByArray = msg.liked_by || [];
+        const isLikedByMe = likedByArray.includes(currentUser.id);
         
         const wrapper = document.createElement('div');
         wrapper.className = `chat-msg-wrapper ${isMe ? 'sent' : 'received'}`;
@@ -1492,63 +1576,84 @@ async function loadChatMessages(isSilentRefresh = false) {
         const msgDiv = document.createElement('div');
         msgDiv.className = `chat-msg ${isMe ? 'sent' : 'received'}`;
         
-        // 1. Group Chat Name (Only if received & in a group)
+        // 1. Group Chat Name with Colors
         if (!isMe && currentChatGroupId) {
-            msgDiv.innerHTML += `<div class="msg-sender-name">@${msg.sender?.username || 'Unknown'}</div>`;
+            const senderName = msg.sender?.username || 'Unknown';
+            const nameColor = getStringColor(senderName); // Generate consistent color
+            msgDiv.innerHTML += `<div class="msg-sender-name" style="color: ${nameColor};">${senderName}</div>`;
         }
 
-        // 2. Reply Reference
-        if (msg.reply_to_id && messageMap[msg.reply_to_id]) {
-            const originalMsg = messageMap[msg.reply_to_id];
-            let refText = originalMsg.content || (originalMsg.file_url ? 'Attachment' : 'Message');
-            if (refText.length > 30) refText = refText.substring(0, 30) + '...';
-            msgDiv.innerHTML += `<div class="chat-msg-reply-ref">Reply to: ${refText}</div>`;
+        // 2. Shared Post Integration with Media Preview
+        if (msg.post) {
+            let mediaPreviewHtml = '';
+            
+            if (msg.post.media_url) {
+                if (msg.post.media_type === 'video' || msg.post.media_url.match(/\.(mp4|webm|mov|ogg)$/i)) {
+                    mediaPreviewHtml = `<video src="${msg.post.media_url}" style="width: 100%; max-height: 180px; border-radius: 4px; margin-bottom: 8px; object-fit: cover; background: #000;" muted></video>`;
+                } else {
+                    mediaPreviewHtml = `<img src="${msg.post.media_url}" style="width: 100%; max-height: 180px; border-radius: 4px; margin-bottom: 8px; object-fit: cover; background: #000;">`;
+                }
+            }
+
+            msgDiv.innerHTML += `
+                <div class="shared-post-preview" onclick="event.stopPropagation(); viewPost('${msg.post.id}')" style="display: flex; flex-direction: column;">
+                    <div class="shared-post-header">
+                        <span class="material-icons" style="font-size: 14px;">post_add</span>
+                        Post from @${msg.post.profiles?.username || 'user'}
+                    </div>
+                    ${mediaPreviewHtml}
+                    <div class="shared-post-content">${msg.post.description || ''}</div>
+                </div>
+            `;
         }
 
-        // 3. Text Content
-        if (msg.content) {
-            msgDiv.innerHTML += `<span>${msg.content}</span>`;
-        }
-
-        // 4. Attached File
+        // 3. Normal Content
+        if (msg.content) msgDiv.innerHTML += `<span>${msg.content}</span>`;
         if (msg.file_url) {
-            const isVideo = msg.file_url.match(/\.(mp4|webm|mov|ogg)$/i);
-            if (isVideo) {
+            if (msg.file_url.match(/\.(mp4|webm|mov|ogg)$/i)) {
                 msgDiv.innerHTML += `<br><video src="${msg.file_url}" class="chat-file-preview" controls></video>`;
             } else {
                 msgDiv.innerHTML += `<br><img src="${msg.file_url}" class="chat-file-preview">`;
             }
         }
 
-        // 5. Meta Details: Timestamp & Read Ticks
+        // 4. Meta Details & Likes Display
         const timeStr = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        let tickHtml = '';
         
-        // Show read receipts for your own messages (Only perfect for 1-on-1, groups default to single tick logic visually here)
-        if (isMe && !currentChatGroupId) {
-            const tickIcon = msg.is_read ? 'done_all' : 'check';
-            const tickClass = msg.is_read ? 'read' : '';
-            tickHtml = `<span class="material-icons msg-read-status ${tickClass}">${tickIcon}</span>`;
+        // Show like count if in GC and > 0
+        let likesHtml = '';
+        if (likedByArray.length > 0) {
+            if (currentChatGroupId) {
+                likesHtml = `<div class="chat-like-counter"><span class="material-icons" style="font-size: 12px;">favorite</span> ${likedByArray.length}</div>`;
+            } else {
+                likesHtml = `<span class="material-icons chat-msg-liked-heart">favorite</span>`; // Normal heart for DMs
+            }
         }
 
         msgDiv.innerHTML += `
             <div class="msg-meta">
                 <span>${timeStr}</span>
-                ${tickHtml}
+                ${isMe && !currentChatGroupId ? `<span class="material-icons msg-read-status ${msg.is_read ? 'read' : ''}">${msg.is_read ? 'done_all' : 'check'}</span>` : ''}
             </div>
+            ${likesHtml}
         `;
 
-        if (msg.is_liked) msgDiv.innerHTML += `<span class="material-icons chat-msg-liked-heart">favorite</span>`;
-
-        // 6. Action Buttons
+        // 5. Action Buttons (Hide Like button for own messages)
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'chat-actions';
         const safeContent = (msg.content || 'attachment').replace(/'/g, "\\'");
-        actionsDiv.innerHTML = `
-            <span class="material-icons chat-action-btn" onclick="initiateReply('${msg.id}', '${safeContent}')">reply</span>
-            <span class="material-icons chat-action-btn" onclick="toggleChatLike('${msg.id}', ${msg.is_liked || false})">${msg.is_liked ? 'favorite' : 'favorite_border'}</span>
-        `;
+        
+        let actionHtml = `<span class="material-icons chat-action-btn" onclick="initiateReply('${msg.id}', '${safeContent}')">reply</span>`;
+        
+        // Only show like button if NOT your own message
+        if (!isMe) {
+            const likedArrayString = JSON.stringify(likedByArray).replace(/"/g, '&quot;');
+            actionHtml += `<span class="material-icons chat-action-btn" onclick="toggleChatLike('${msg.id}', ${likedArrayString})">${isLikedByMe ? 'favorite' : 'favorite_border'}</span>`;
+        }
 
+        actionsDiv.innerHTML = actionHtml;
+
+        // Double click to like (Only if not your own message)
         let clickTimer = null;
         msgDiv.addEventListener('click', (e) => {
             if (clickTimer === null) {
@@ -1556,7 +1661,7 @@ async function loadChatMessages(isSilentRefresh = false) {
             } else {
                 clearTimeout(clickTimer);
                 clickTimer = null;
-                toggleChatLike(msg.id, msg.is_liked);
+                if (!isMe) toggleChatLike(msg.id, likedByArray);
                 e.preventDefault(); 
             }
         });
@@ -1566,9 +1671,7 @@ async function loadChatMessages(isSilentRefresh = false) {
         container.appendChild(wrapper);
     });
 
-    if (!isSilentRefresh || isScrolledToBottom) {
-        container.scrollTop = container.scrollHeight;
-    }
+    if (!isSilentRefresh || isScrolledToBottom) container.scrollTop = container.scrollHeight;
 }
 
 // --- UPDATED: Send Message logic for Groups ---
@@ -1640,4 +1743,76 @@ if (chatInputField) {
         this.style.height = 'auto'; 
         this.style.height = (this.scrollHeight) + 'px'; 
     });
+}
+
+// --- NEW: Post Sharing Logic ---
+let postToShareId = null;
+
+async function openShareModal(postId) {
+    postToShareId = postId;
+    showModal('sharePostModal');
+    
+    const container = document.getElementById('shareChatList');
+    container.innerHTML = '<p>Loading chats...</p>';
+
+    // Fetch DMs & Groups (similar to loadInbox)
+    const { data: myGroups } = await client.from('group_members').select('group_chats(id, name, avatar_url)').eq('user_id', currentUser.id);
+    const { data: myFollows } = await client.from('follows').select('profiles!follows_following_id_fkey(id, username, avatar_url)').eq('follower_id', currentUser.id);
+
+    container.innerHTML = '';
+    
+    // List Groups
+    if (myGroups) {
+        myGroups.forEach(mg => {
+            const g = mg.group_chats;
+            container.innerHTML += `
+                <div class="list-user-row" onclick="sendPostToChat(null, '${g.id}')">
+                    <div class="post-avatar" style="background-image: url('${g.avatar_url || ''}')">${!g.avatar_url ? '<span class="material-icons" style="width:100%;line-height:40px;text-align:center;">group</span>' : ''}</div>
+                    <div style="flex-grow: 1; font-weight: bold;">${g.name}</div>
+                    <button style="padding: 5px 15px;">Send</button>
+                </div>
+            `;
+        });
+    }
+
+    // List Friends (Follows)
+    if (myFollows) {
+        myFollows.forEach(f => {
+            const p = f.profiles;
+            container.innerHTML += `
+                <div class="list-user-row" onclick="sendPostToChat('${p.id}', null)">
+                    <div class="post-avatar" style="background-image: url('${p.avatar_url || ''}')"></div>
+                    <div style="flex-grow: 1; font-weight: bold;">@${p.username}</div>
+                    <button style="padding: 5px 15px;">Send</button>
+                </div>
+            `;
+        });
+    }
+}
+
+function closeShareModal() {
+    hideModal('sharePostModal');
+    postToShareId = null;
+}
+
+async function sendPostToChat(userId, groupId) {
+    if (!postToShareId) return;
+
+    const messagePayload = { 
+        sender_id: currentUser.id, 
+        post_id: postToShareId,
+        content: "" // Optional: You could add an input in the modal to let them type a message with the share
+    };
+
+    if (groupId) messagePayload.group_id = groupId;
+    else messagePayload.receiver_id = userId;
+
+    const { error } = await client.from('messages').insert([messagePayload]);
+    
+    if (error) {
+        alert("Failed to share post: " + error.message);
+    } else {
+        alert("Sent!");
+        closeShareModal();
+    }
 }

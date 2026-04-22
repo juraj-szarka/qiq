@@ -162,17 +162,26 @@
         </div>
 
         <div id="createGroupModal" class="modal hidden" style="z-index: 1070 !important;">
-            <div class="modal-content" style="height: 60vh;">
+            <div class="modal-content" style="height: 65vh;">
                 <span class="close" onclick="closeCreateGroupModal()">&times;</span>
                 <h2 style="text-align: center; margin-bottom: 15px;">Create Group</h2>
+                
+                <div style="text-align: center; margin-bottom: 10px;">
+                    <label for="newGroupAvatar" style="cursor: pointer; display: inline-block; width: 60px; height: 60px; background: #333; border-radius: 50%; line-height: 60px;">
+                        <span class="material-icons">add_a_photo</span>
+                    </label>
+                    <input type="file" id="newGroupAvatar" accept="image/*" class="hidden" onchange="previewGroupAvatar(event)">
+                    <img id="groupAvatarPreview" class="hidden" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover; display: block; margin: 0 auto; cursor: pointer;" onclick="document.getElementById('newGroupAvatar').click()">
+                </div>
+
                 <input type="text" id="newGroupName" placeholder="Group Name" style="width: 100%; margin-bottom: 10px;">
                 <p style="color: #aaa; font-size: 14px; margin-bottom: 5px;">Select Members:</p>
                 <div id="groupMembersSelection" style="flex-grow: 1; overflow-y: auto; background: #111; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
-                    </div>
+                </div>
                 <button onclick="createGroupChat()" style="width: 100%;">Create</button>
             </div>
         </div>
-        
+
         <div id="chatModal" class="modal full-modal hidden" style="z-index: 1060 !important;">
             <div class="modal-content full-screen-content" style="padding: 0; display: flex; flex-direction: column;">
                 <div style="padding: 15px; background: #222; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #333;">
@@ -205,6 +214,15 @@
                         <button onclick="sendChatMessage()" style="margin-bottom: 2px;">Send</button>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <div id="sharePostModal" class="modal hidden" style="z-index: 1080 !important;">
+            <div class="modal-content">
+                <span class="close" onclick="closeShareModal()">&times;</span>
+                <h2>Share Post</h2>
+                <div id="shareChatList" class="list-container" style="max-height: 300px; overflow-y: auto; margin-top: 10px;">
+                    </div>
             </div>
         </div>
     </div> 
