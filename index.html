@@ -2,242 +2,299 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ScrollApp</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>qiq</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
+    <div class="app">
+        <!-- Top Feed Nav -->
+        <nav id="topFeedNav" class="top-feed-nav">
+            <button class="top-nav-btn active" data-tab="foryou">For You</button>
+            <button class="top-nav-btn" data-tab="following">Following</button>
+            <div class="top-nav-indicator"></div>
+        </nav>
 
-    <div class="app-container">
-        
-        <div id="topFeedNav" class="top-nav">
-            <button id="tab-foryou" class="top-nav-btn active" onclick="switchFeedTab('foryou')">For You</button>
-            <button id="tab-following" class="top-nav-btn" onclick="switchFeedTab('following')">Following</button>
-        </div>
-        <div id="feed" class="feed-container"></div>
-        <div id="searchModal" class="modal full-modal hidden">
-            <div class="modal-content full-screen-content">
-                <h2 style="text-align: center; margin-bottom: 15px; margin-top: 10px;">Search Users</h2>
-                <input type="search" id="searchInput" placeholder="Search..." autocomplete="new-password" spellcheck="false" oninput="searchUsers()" style="width: 90%; margin: 0 auto; display: block; border: 1px solid #555;">                <div id="searchResults" class="list-container" style="padding: 15px; flex-grow: 1;"></div>
+        <!-- Feed -->
+        <main id="feed" class="feed"></main>
+
+        <!-- Bottom Navigation -->
+        <nav class="bottom-nav">
+            <button id="nav-home" class="nav-btn active" data-tab="home"><span class="material-icons">home</span></button>
+            <button id="nav-search" class="nav-btn" data-tab="search"><span class="material-icons">search</span></button>
+            <button id="nav-upload" class="nav-btn" data-tab="upload"><span class="material-icons">add_box</span></button>
+            <button id="nav-messages" class="nav-btn" data-tab="messages">
+                <span class="material-icons">mail</span>
+                <span id="unreadBadge" class="badge hidden">0</span>
+            </button>
+            <button id="nav-profile" class="nav-btn" data-tab="profile"><span class="material-icons">person</span></button>
+        </nav>
+
+        <!-- ────── MODALS ────── -->
+
+        <!-- Search -->
+        <div id="searchModal" class="modal hidden">
+            <div class="modal-content full">
+                <div class="modal-header">
+                    <span class="material-icons modal-back" onclick="hideModal('searchModal')">arrow_back</span>
+                    <h2>Search</h2>
+                </div>
+                <div class="modal-body">
+                    <div class="search-box">
+                        <span class="material-icons">search</span>
+                        <input type="search" id="searchInput" placeholder="Search users..." autocomplete="off">
+                    </div>
+                    <div id="searchResults" class="list"></div>
+                </div>
             </div>
         </div>
 
-        <div id="authModal" class="modal full-modal hidden">
-            <div class="modal-content full-screen-content" style="justify-content: center; align-items: center;">
-                
-                <div id="loginView" style="width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px;">
-                    <h2>Login</h2>
-                    <input type="email" id="loginEmail" placeholder="Email" style="width: 80%;">
-                    <input type="password" id="loginPassword" placeholder="Password" style="width: 80%;">
-                    <button onclick="signIn()" style="width: 80%;">Login</button>
-                    <p style="cursor: pointer; color: #aaa; margin-top: 15px; font-size: 14px;" onclick="toggleAuthView('register')">Don't have an account? Register</p>
+        <!-- Auth -->
+        <div id="authModal" class="modal hidden">
+            <div class="modal-content auth">
+                <div class="auth-brand">
+                    <div class="auth-logo">qiq</div>
+                    <p class="auth-subtitle">Join the movement</p>
                 </div>
 
-                <div id="registerView" class="hidden" style="width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px;">
-                    <h2>Register</h2>
-                    <input type="text" id="registerUsername" placeholder="Username" style="width: 80%;" required>
-                    <input type="email" id="registerEmail" placeholder="Email" style="width: 80%;">
-                    <input type="password" id="registerPassword" placeholder="Password" style="width: 80%;">
-                    <button onclick="signUp()" style="width: 80%;">Register</button>
-                    <p style="cursor: pointer; color: #aaa; margin-top: 15px; font-size: 14px;" onclick="toggleAuthView('login')">Already have an account? Login</p>
+                <div id="loginView">
+                    <form onsubmit="signIn(); return false" class="auth-form">
+                        <input type="email" id="loginEmail" placeholder="Email" required>
+                        <input type="password" id="loginPassword" placeholder="Password" required>
+                        <button type="submit" class="btn-primary">Log in</button>
+                    </form>
+                    <p class="auth-switch">Don't have an account? <a href="#" onclick="toggleAuthView('register')">Register</a></p>
                 </div>
 
-            </div>
-        </div>
-
-        <div id="profileModal" class="modal full-modal hidden">
-            <div class="modal-content full-screen-content">
-                <div class="profile-header">
-                    <div id="avatarPreview" class="avatar-preview"></div>
-                    
-                    <div class="profile-stats">
-                        <div onclick="showFollowList('followers', currentUser.id)">
-                            <strong id="myFollowersCount">0</strong> Followers
-                        </div>
-                        <div onclick="showFollowList('following', currentUser.id)">
-                            <strong id="myFollowingCount">0</strong> Following
-                        </div>
-                    </div>
-
-                    <div class="edit-controls">
-                        <input type="file" id="avatarInput" accept="image/*" style="font-size: 12px; margin-bottom: 5px;">
-                        <input type="text" id="displayName" placeholder="Display Name">
-                        <input type="text" id="username" placeholder="Username">
-                        <textarea id="bio" placeholder="Short bio about yourself..."></textarea>
-                        <div style="display: flex; gap: 10px; justify-content: center; margin-top: 5px;">
-                            <button onclick="saveProfile()">Save</button>
-                            <button onclick="signOut()" style="background: #555;">Logout</button>
-                        </div>
-                        <p id="profileStatus"></p>
-                    </div>
+                <div id="registerView" class="hidden">
+                    <form onsubmit="signUp(); return false" class="auth-form">
+                        <input type="text" id="registerUsername" placeholder="Username" required>
+                        <input type="email" id="registerEmail" placeholder="Email" required>
+                        <input type="password" id="registerPassword" placeholder="Password" required minlength="6">
+                        <button type="submit" class="btn-primary">Create account</button>
+                    </form>
+                    <p class="auth-switch">Already have an account? <a href="#" onclick="toggleAuthView('login')">Log in</a></p>
                 </div>
-                <h3 style="text-align: center; margin-bottom: 10px;">My Posts</h3>
-                <div id="myProfilePosts" class="profile-grid"></div>
+
+                <button class="btn-ghost modal-close-btn" onclick="hideModal('authModal')">Close</button>
             </div>
         </div>
 
-        <div id="viewProfileModal" class="modal full-modal hidden">
-            <div class="modal-content full-screen-content">
-                <span class="close" onclick="closeViewProfileModal()">&times;</span>
-                <div class="profile-header">
-                    <div id="viewAvatar" class="avatar-preview"></div>
-                    <h2 id="viewDisplayName">Name</h2>
-                    <p id="viewUsername" style="color: #aaa; font-size: 14px;">@username</p>
-                    <p id="viewBio" style="margin-top: 10px;">Bio goes here...</p>
-                    
-                    <div class="profile-stats">
-                        <div onclick="showFollowList('followers', currentViewProfileId)">
-                            <strong id="viewFollowersCount">0</strong> Followers
-                        </div>
-                        <div onclick="showFollowList('following', currentViewProfileId)">
-                            <strong id="viewFollowingCount">0</strong> Following
-                        </div>
-                    </div>
-
-                    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 15px;">
-                        <button id="profileFollowBtn" class="feed-follow-btn" style="display: none;" onclick="toggleFollow(event, currentViewProfileId, true)">Follow</button>
-                        <button id="profileMessageBtn" class="feed-follow-btn" style="display: none; background: #fff; color: #000;" onclick="closeViewProfileModal(); switchTab('messages'); openChat(currentViewProfileId)">Message</button>
-                    </div>
+        <!-- Upload -->
+        <div id="uploadModal" class="modal hidden">
+            <div class="modal-content full">
+                <div class="modal-header">
+                    <span class="material-icons modal-back" onclick="hideModal('uploadModal')">arrow_back</span>
+                    <h2>New Post</h2>
+                    <span></span>
                 </div>
-                <div id="viewProfilePosts" class="profile-grid"></div>
+                <div class="modal-body upload-body">
+                    <div class="upload-dropzone" id="uploadDropzone" onclick="document.getElementById('mediaInput').click()">
+                        <span class="material-icons upload-icon">add_photo_alternate</span>
+                        <p>Tap to select photos or videos</p>
+                        <span class="upload-hint">Max 10 photos · Single video</span>
+                    </div>
+                    <input type="file" id="mediaInput" accept="video/mp4,video/quicktime,image/jpeg,image/png" multiple hidden onchange="handleFileSelection(event)">
+                    <div id="stagedFilesContainer" class="staged-grid"></div>
+                    <textarea id="postDescription" class="upload-caption" placeholder="Write a caption... (use #hashtags)" rows="3"></textarea>
+                    <button onclick="uploadMedia()" class="btn-primary" id="uploadBtn">Post</button>
+                    <p id="uploadStatus" class="status-text"></p>
+                </div>
             </div>
         </div>
 
-        <div id="singlePostModal" class="modal full-modal hidden">
-            <div class="modal-content full-screen-content single-post-view">
-                <span class="close" onclick="closeSinglePostModal()" style="z-index: 60; top: 20px;">&times;</span>
-                <div id="singlePostContainer"></div>
+        <!-- My Profile -->
+        <div id="profileModal" class="modal hidden">
+            <div class="modal-content full">
+                <div class="modal-header">
+                    <span class="material-icons modal-back" onclick="hideModal('profileModal')">arrow_back</span>
+                    <h2>Edit Profile</h2>
+                    <span></span>
+                </div>
+                <div class="modal-body">
+                    <div class="profile-edit">
+                        <div class="avatar-edit" id="avatarPreview" onclick="document.getElementById('avatarInput').click()">
+                            <div class="avatar-edit-overlay"><span class="material-icons">camera_alt</span></div>
+                        </div>
+                        <input type="file" id="avatarInput" accept="image/*" hidden onchange="previewAvatar(event)">
+                        <div class="profile-stats-row">
+                            <div class="stat" onclick="showFollowList('followers', state.user.id)">
+                                <strong id="myFollowersCount">0</strong>
+                                <span>Followers</span>
+                            </div>
+                            <div class="stat" onclick="showFollowList('following', state.user.id)">
+                                <strong id="myFollowingCount">0</strong>
+                                <span>Following</span>
+                            </div>
+                        </div>
+                        <div class="edit-fields">
+                            <input type="text" id="displayName" placeholder="Display Name">
+                            <input type="text" id="username" placeholder="Username">
+                            <textarea id="bio" placeholder="Bio" rows="3"></textarea>
+                        </div>
+                        <div class="edit-actions">
+                            <button onclick="saveProfile()" class="btn-primary">Save</button>
+                            <button onclick="signOut()" class="btn-danger">Log out</button>
+                        </div>
+                        <p id="profileStatus" class="status-text"></p>
+                    </div>
+                    <h3 class="section-title">My Posts</h3>
+                    <div id="myProfilePosts" class="grid"></div>
+                </div>
             </div>
         </div>
 
+        <!-- View Profile -->
+        <div id="viewProfileModal" class="modal hidden">
+            <div class="modal-content full">
+                <div class="modal-header">
+                    <span class="material-icons modal-back" onclick="closeViewProfileModal()">arrow_back</span>
+                    <h2 id="viewDisplayName">Profile</h2>
+                    <span></span>
+                </div>
+                <div class="modal-body">
+                    <div class="profile-view">
+                        <div id="viewAvatar" class="avatar-large"></div>
+                        <h2 id="viewDisplayName2">Name</h2>
+                        <p id="viewUsername" class="username-tag">@username</p>
+                        <p id="viewBio" class="bio-text">No bio yet</p>
+                        <div class="profile-stats-row">
+                            <div class="stat" onclick="showFollowList('followers', state.currentViewProfileId)">
+                                <strong id="viewFollowersCount">0</strong>
+                                <span>Followers</span>
+                            </div>
+                            <div class="stat" onclick="showFollowList('following', state.currentViewProfileId)">
+                                <strong id="viewFollowingCount">0</strong>
+                                <span>Following</span>
+                            </div>
+                        </div>
+                        <div class="profile-actions">
+                            <button id="profileFollowBtn" class="btn-outline hidden" onclick="toggleFollow(state.currentViewProfileId, true)">Follow</button>
+                            <button id="profileMessageBtn" class="btn-outline hidden" onclick="openChat(state.currentViewProfileId, null)">Message</button>
+                        </div>
+                    </div>
+                    <h3 class="section-title">Posts</h3>
+                    <div id="viewProfilePosts" class="grid"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Single Post -->
+        <div id="singlePostModal" class="modal hidden">
+            <div class="modal-content full post-view">
+                <span class="close-btn" onclick="closeSinglePostModal()">&times;</span>
+                <div id="singlePostContainer" class="single-post-container"></div>
+            </div>
+        </div>
+
+        <!-- List (Followers / Following) -->
         <div id="listModal" class="modal hidden">
             <div class="modal-content">
-                <span class="close" onclick="hideModal('listModal')">&times;</span>
-                <h2 id="listTitle">List</h2>
-                <div id="listContainer" class="list-container"></div>
+                <div class="modal-header">
+                    <span class="material-icons modal-back" onclick="hideModal('listModal')">arrow_back</span>
+                    <h2 id="listTitle">List</h2>
+                    <span></span>
+                </div>
+                <div id="listContainer" class="list"></div>
             </div>
         </div>
 
-        <div id="uploadModal" class="modal full-modal hidden">
-            <div class="modal-content full-screen-content" style="justify-content: flex-start; align-items: center; padding-top: 40px;">
-                <h2>Upload Media</h2>
-                <p style="margin-bottom: 10px; color: #aaa; text-align: center;">Max 10 photos (Videos must be single)</p>
-                
-                <button onclick="document.getElementById('mediaInput').click()" style="width: 80%; margin-bottom: 15px; background: #333; border: 1px dashed #777;">+ Select Files</button>
-                <input type="file" id="mediaInput" accept="video/mp4,video/quicktime,image/jpeg,image/png" multiple style="display: none;" onchange="handleFileSelection(event)">
-                
-                <div id="stagedFilesContainer" style="width: 80%; display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 15px; align-items: center;"></div>
-                
-                <textarea id="postDescription" placeholder="Write a caption..." style="width: 80%; margin-bottom: 10px;"></textarea>
-                <button onclick="uploadMedia()" style="width: 80%;">Post</button>
-                <p id="uploadStatus" style="margin-top: 10px;"></p>
-            </div>
-        </div>
-
+        <!-- Comments -->
         <div id="commentsModal" class="modal hidden">
-            <div class="modal-content" style="height: 60vh; display: flex; flex-direction: column;">
-                <span class="close" onclick="hideModal('commentsModal')">&times;</span>
-                <h2 style="text-align: center;">Comments</h2>
-                
-                <div id="commentsList" style="flex-grow: 1; overflow-y: auto; margin-top: 10px;">
-                    </div>
-                
-                <div class="comment-input-area" style="padding: 10px; background: #222; margin-top: 0; align-items: flex-end;">
-                    <textarea id="newCommentInput" rows="1" placeholder="Add a comment..." style="flex-grow: 1; resize: none; overflow-y: auto; max-height: 120px; min-height: 40px; padding: 10px; border-radius: 5px; background: #333; color: white; border: none; font-family: inherit; line-height: 1.4;" autocomplete="off"></textarea>
-                    <button id="postCommentBtn" style="margin-bottom: 2px;">Post</button>
+            <div class="modal-content comments">
+                <div class="modal-header">
+                    <span class="material-icons modal-back" onclick="hideModal('commentsModal')">arrow_back</span>
+                    <h2>Comments</h2>
+                    <span></span>
+                </div>
+                <div id="commentsList" class="comments-list"></div>
+                <div class="comment-input">
+                    <textarea id="newCommentInput" placeholder="Add a comment..." rows="1"></textarea>
+                    <button id="postCommentBtn" class="btn-primary btn-small" onclick="postComment()">Post</button>
                 </div>
             </div>
         </div>
 
-        <div id="messagesModal" class="modal full-modal hidden">
-            <div class="modal-content full-screen-content">
-                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 15px;">
-                    <h2 style="margin: 0;">Messages</h2>
-                    <button onclick="openCreateGroupModal()" style="padding: 5px 10px; font-size: 14px; background: #333; border: 1px solid #555;">+ Group</button>
+        <!-- Messages Inbox -->
+        <div id="messagesModal" class="modal hidden">
+            <div class="modal-content full">
+                <div class="modal-header">
+                    <span class="material-icons modal-back" onclick="hideModal('messagesModal')">arrow_back</span>
+                    <h2>Messages</h2>
+                    <button class="btn-outline btn-small" onclick="openCreateGroupModal()">+ Group</button>
                 </div>
-                <div id="inboxList" class="list-container" style="padding: 15px; flex-grow: 1;"></div>
+                <div id="inboxList" class="list"></div>
             </div>
         </div>
 
-        <div id="createGroupModal" class="modal hidden" style="z-index: 1070 !important;">
-            <div class="modal-content" style="height: 65vh;">
-                <span class="close" onclick="closeCreateGroupModal()">&times;</span>
-                <h2 style="text-align: center; margin-bottom: 15px;">Create Group</h2>
-                
-                <div style="text-align: center; margin-bottom: 10px;">
-                    <label for="newGroupAvatar" style="cursor: pointer; display: inline-block; width: 60px; height: 60px; background: #333; border-radius: 50%; line-height: 60px;">
-                        <span class="material-icons">add_a_photo</span>
-                    </label>
-                    <input type="file" id="newGroupAvatar" accept="image/*" class="hidden" onchange="previewGroupAvatar(event)">
-                    <img id="groupAvatarPreview" class="hidden" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover; display: block; margin: 0 auto; cursor: pointer;" onclick="document.getElementById('newGroupAvatar').click()">
-                </div>
-
-                <input type="text" id="newGroupName" placeholder="Group Name" style="width: 100%; margin-bottom: 10px;">
-                <p style="color: #aaa; font-size: 14px; margin-bottom: 5px;">Select Members:</p>
-                <div id="groupMembersSelection" style="flex-grow: 1; overflow-y: auto; background: #111; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
-                </div>
-                <button onclick="createGroupChat()" style="width: 100%;">Create</button>
-            </div>
-        </div>
-
-        <div id="chatModal" class="modal full-modal hidden" style="z-index: 1060 !important;">
-            <div class="modal-content full-screen-content" style="padding: 0; display: flex; flex-direction: column;">
-                <div style="padding: 15px; background: #222; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #333;">
-                    <span class="material-icons" onclick="closeChat()" style="cursor: pointer;">arrow_back</span>
-                    <div id="chatAvatar" class="post-avatar" style="width: 35px; height: 35px;"></div>
-                    <h3 id="chatUsername">Username</h3>
-                </div>
-                
-                <div id="chatMessages" style="flex-grow: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px;">
-                    </div>
-                
-                <div class="comment-input-area" style="padding: 10px; background: #222; margin-top: 0; flex-direction: column; gap: 5px;">
-    
-                    <div id="chatFilePreviewArea" class="hidden" style="display: flex; align-items: center; gap: 10px; background: #333; padding: 5px 10px; border-radius: 5px; font-size: 12px;">
-                        <span class="material-icons" style="font-size: 16px;">attachment</span>
-                        <span id="chatFileName" style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">filename.jpg</span>
-                        <span class="material-icons" style="cursor: pointer; font-size: 16px; color: #ff4444;" onclick="cancelChatFile()">close</span>
-                    </div>
-
-                    <div id="replyPreviewArea" class="hidden" style="display: flex; align-items: center; justify-content: space-between; background: #444; padding: 8px 10px; border-radius: 5px 5px 0 0; font-size: 12px; color: #ccc; border-left: 3px solid #ff0050;">
-                        <span id="replyPreviewText" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Replying to...</span>
-                        <span class="material-icons" style="cursor: pointer; font-size: 16px;" onclick="cancelReply()">close</span>
-                    </div>
-
-                    <div style="display: flex; width: 100%; gap: 10px; align-items: flex-end;">
-                        <label for="chatFileInput" class="material-icons" style="cursor: pointer; color: #aaa; padding-bottom: 10px; margin: 0;">add_photo_alternate</label>
-                        <input type="file" id="chatFileInput" class="hidden" accept="image/*,video/*" onchange="handleChatFileSelect(event)">
-                        
-                        <textarea id="chatInput" rows="1" placeholder="Message..." style="flex-grow: 1; resize: none; overflow-y: auto; max-height: 120px; min-height: 40px; padding: 10px; border-radius: 5px; background: #333; color: white; border: none; font-family: inherit; line-height: 1.4;" autocomplete="off"></textarea>
-                        <button onclick="sendChatMessage()" style="margin-bottom: 2px;">Send</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div id="sharePostModal" class="modal hidden" style="z-index: 1080 !important;">
+        <!-- Create Group -->
+        <div id="createGroupModal" class="modal hidden">
             <div class="modal-content">
-                <span class="close" onclick="closeShareModal()">&times;</span>
-                <h2>Share Post</h2>
-                <div id="shareChatList" class="list-container" style="max-height: 300px; overflow-y: auto; margin-top: 10px;">
+                <div class="modal-header">
+                    <span class="material-icons modal-back" onclick="closeCreateGroupModal()">arrow_back</span>
+                    <h2>New Group</h2>
+                    <span></span>
+                </div>
+                <div class="modal-body gap">
+                    <div class="group-avatar-edit" onclick="document.getElementById('newGroupAvatar').click()">
+                        <img id="groupAvatarPreview" class="hidden">
+                        <div id="groupAvatarPlaceholder" class="group-avatar-placeholder"><span class="material-icons">add_a_photo</span></div>
                     </div>
+                    <input type="file" id="newGroupAvatar" accept="image/*" hidden onchange="previewGroupAvatar(event)">
+                    <input type="text" id="newGroupName" placeholder="Group name">
+                    <p class="section-label">Select members</p>
+                    <div id="groupMembersSelection" class="group-member-list"></div>
+                    <button onclick="createGroupChat()" class="btn-primary">Create group</button>
+                </div>
             </div>
         </div>
-    </div> 
-    <nav class="bottom-nav" id="bottomNav">
-        <button id="nav-home" class="nav-btn active" onclick="switchTab('home')"><span class="material-icons">home</span></button>
-        <button id="nav-search" class="nav-btn" onclick="switchTab('search')"><span class="material-icons">search</span></button>
-        <button id="nav-upload" class="nav-btn" onclick="switchTab('upload')"><span class="material-icons">add_box</span></button>
-        
-        <button id="nav-messages" class="nav-btn" onclick="switchTab('messages')" style="position: relative;">
-            <span class="material-icons">mail</span>
-            <span id="unreadBadge" class="hidden nav-badge">0</span>
-        </button>
-        
-        <button id="nav-profile" class="nav-btn" onclick="switchTab('profile')"><span class="material-icons">person</span></button>
-    </nav>
+
+        <!-- Chat -->
+        <div id="chatModal" class="modal hidden">
+            <div class="modal-content full">
+                <div class="chat-header">
+                    <span class="material-icons" onclick="closeChat()">arrow_back</span>
+                    <div id="chatAvatar" class="avatar-small"></div>
+                    <h3 id="chatUsername">Chat</h3>
+                </div>
+                <div id="chatMessages" class="chat-messages"></div>
+                <div class="chat-footer">
+                    <div id="replyPreviewArea" class="reply-preview hidden">
+                        <span id="replyPreviewText">Replying...</span>
+                        <span class="material-icons" onclick="cancelReply()">close</span>
+                    </div>
+                    <div id="chatFilePreviewArea" class="file-preview hidden">
+                        <span class="material-icons">insert_drive_file</span>
+                        <span id="chatFileName">file</span>
+                        <span class="material-icons" onclick="cancelChatFile()">close</span>
+                    </div>
+                    <div class="chat-input-row">
+                        <label for="chatFileInput" class="chat-attach"><span class="material-icons">add_photo_alternate</span></label>
+                        <input type="file" id="chatFileInput" accept="image/*,video/*" hidden onchange="handleChatFileSelect(event)">
+                        <textarea id="chatInput" placeholder="Message..." rows="1"></textarea>
+                        <button onclick="sendChatMessage()" class="btn-primary btn-small btn-send">Send</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Share Post -->
+        <div id="sharePostModal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <span class="material-icons modal-back" onclick="closeShareModal()">arrow_back</span>
+                    <h2>Share to</h2>
+                    <span></span>
+                </div>
+                <div id="shareChatList" class="list"></div>
+            </div>
+        </div>
+
+        <!-- Toast Container -->
+        <div id="toastContainer" class="toast-container"></div>
+    </div>
 
     <script src="app.js"></script>
 </body>
